@@ -37,7 +37,7 @@ pub fn HeapReAlloc(emu: &mut emu::Emu) {
         return;
     }
 
-    let new_addr = match heap_engine::heap_allocate(emu, heap_handle, effective_size) {
+    let new_addr = match heap_engine::heap_reallocate(emu, heap_handle, old_mem, effective_size) {
         Some(a) => a,
         None => {
             heap_engine::fail_allocation(emu, flags);
@@ -46,25 +46,12 @@ pub fn HeapReAlloc(emu: &mut emu::Emu) {
         }
     };
 
-    let copy_size = std::cmp::min(old_size, effective_size as usize);
-    if !emu.maps.memcpy(new_addr, old_mem, copy_size) {
-        heap_engine::heap_free(emu, heap_handle, new_addr);
-        heap_engine::fail_allocation(emu, flags);
-        emu.regs_mut().rax = 0;
-        return;
-    }
-
     if (flags & constants::HEAP_ZERO_MEMORY) != 0 && (effective_size as usize) > old_size {
-        let zero_start = new_addr + old_size as u64;
-        let zero_size = (effective_size as usize) - old_size;
-        emu.maps.memset(zero_start, 0, zero_size);
-    }
-
-    if !emu.cfg.heap_free_soft {
-        heap_engine::heap_free(emu, heap_handle, old_mem);
-    } else {
-        emu.handle_management
-            .forget_heap_allocation(heap_handle, old_mem);
+        emu.maps.memset(
+            new_addr + old_size as u64,
+            0,
+            (effective_size as usize) - old_size,
+        );
     }
 
     log_red!(

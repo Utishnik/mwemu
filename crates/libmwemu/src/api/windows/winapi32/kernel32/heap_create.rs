@@ -27,11 +27,11 @@ pub fn HeapCreate(emu: &mut emu::Emu) {
     emu.stack_pop32(false);
     emu.stack_pop32(false);
 
-    let arena = emu.create_heap_arena();
+    let arena = emu.create_heap_arena(init_sz as usize, max_sz as usize, opts);
     let key = emu.handle_management.insert_heap_handle(HeapHandle::new(
         opts,
-        init_sz as u64,
-        max_sz as u64,
+        init_sz as usize,
+        max_sz as usize,
         arena,
     ));
     log_red!(emu, "kernel32!HeapCreate handle=0x{:x}", key as u64);

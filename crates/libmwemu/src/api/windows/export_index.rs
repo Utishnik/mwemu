@@ -325,10 +325,10 @@ impl ExportIndexRegistry {
     }
 
     // Resolve address to its name
-    pub fn resolve_address_module(&self, module_name: &str, addr: u64) -> Option<&str>{
+    #[inline]
+    pub fn resolve_address_module(&self, module_name: &str, addr: u64) -> Option<&str> {
         self.by_name[module_name].resolve_address(addr)
     }
-
 
     /// Resolve a named export in a specific module, following forwarders
     /// through already-registered target modules with a depth limit.

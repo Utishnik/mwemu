@@ -19,7 +19,7 @@ use crate::{winapi::winapi32, winapi::winapi64, windows::kuser_shared, windows::
 use rs_header::pe::pe64;
 
 use crate::api::windows::export_index::ExportIndexRegistry;
-use crate::emu::object_handle::HandleManagement;
+use crate::emu::object_handle::{HandleManagement, HeapHandle};
 use crate::maps::heap_allocation::O1Heap;
 use fast_log::appender::{Command, FastLogRecord, RecordFormat};
 
@@ -346,8 +346,7 @@ impl Emu {
                 crate::threading::context::ArchThreadState::X86 { .. }
             ) {
                 let id = self.threads[self.current_thread_id].id;
-                self.threads[self.current_thread_id] =
-                    crate::threading::context::ThreadContext::new(id, self.cfg.arch);
+                self.threads[self.current_thread_id] = ThreadContext::new(id, self.cfg.arch);
             }
         }
 
@@ -414,9 +413,15 @@ impl Emu {
         if self.heap_arenas.is_empty() {
             let heap_sz: u64 = 4 * 1024 * 1024; // 4 MiB
             let base = self.maps.alloc(heap_sz).expect("cannot reserve heap arena");
-            self.maps
-                .create_map(".heap", base, heap_sz, Permission::READ_WRITE)
-                .expect("cannot create heap map");
+            if !self.maps.exists_mapname(".heap") {
+                self.maps
+                    .create_map(".heap", base, heap_sz, Permission::READ_WRITE)
+                    .expect("cannot create heap map");
+            } else {
+                self.maps
+                    .create_map(".heap_lazy", base, heap_sz, Permission::READ_WRITE)
+                    .expect("cannot create lazy heap map");
+            }
             if self.heap_addr == 0 {
                 self.heap_addr = base;
             }
@@ -430,17 +435,42 @@ impl Emu {
     /// Create a fresh private O1Heap arena for `HeapCreate`. Ensures entry 0
     /// (the process heap) exists first so the new arena always lives at
     /// index >= 1.
-    pub fn create_heap_arena(&mut self) -> usize {
-        // Ensure process heap exists at index 0.
+    pub fn create_heap_arena(
+        &mut self,
+        initial_size: usize,
+        maximum_size: usize,
+        opts: u32,
+    ) -> usize {
         let _ = self.heap_mut();
-        let heap_sz: u64 = 4 * 1024 * 1024;
+        let default_size = 4 * 1024 * 1024;
+        let requested_size = if maximum_size == 0 {
+            initial_size.max(default_size)
+        } else {
+            initial_size.max(maximum_size)
+        };
+        let arena_size = requested_size
+            .max(O1Heap::MIN_ARENA_SIZE)
+            .min(u32::MAX as usize);
         let name = format!(".heap_{}", self.heap_arenas.len());
-        let base = self.maps.alloc(heap_sz).expect("cannot reserve heap arena");
+
+        let base = self
+            .maps
+            .alloc(arena_size as u64)
+            .expect("cannot reserve heap arena");
         self.maps
-            .create_map(name.as_str(), base, heap_sz, Permission::READ_WRITE)
+            .create_map(
+                name.as_str(),
+                base,
+                arena_size as u64,
+                if opts == 0x40000 {
+                    Permission::READ_WRITE_EXECUTE
+                } else {
+                    Permission::READ_WRITE
+                },
+            )
             .expect("cannot create heap map");
         self.heap_arenas.push(Box::new(
-            O1Heap::new(base, heap_sz as u32).expect("cannot init heap arena"),
+            O1Heap::new(base, arena_size as u32).expect("cannot init heap arena"),
         ));
         self.heap_arenas.len() - 1
     }
@@ -466,8 +496,7 @@ impl Emu {
             )
         {
             let id = self.threads[self.current_thread_id].id;
-            self.threads[self.current_thread_id] =
-                crate::threading::context::ThreadContext::new(id, self.cfg.arch);
+            self.threads[self.current_thread_id] = ThreadContext::new(id, self.cfg.arch);
         }
 
         // Refresh `instruction_state` so the cached cache stays in sync with `cfg.arch`.
@@ -492,8 +521,7 @@ impl Emu {
             crate::threading::context::ArchThreadState::X86 { .. }
         ) {
             let id = self.threads[self.current_thread_id].id;
-            self.threads[self.current_thread_id] =
-                crate::threading::context::ThreadContext::new(id, self.cfg.arch);
+            self.threads[self.current_thread_id] = ThreadContext::new(id, self.cfg.arch);
         }
 
         self.ensure_arch_state_aarch64();
@@ -591,8 +619,7 @@ impl Emu {
             crate::threading::context::ArchThreadState::X86 { .. }
         ) {
             let id = self.threads[self.current_thread_id].id;
-            self.threads[self.current_thread_id] =
-                crate::threading::context::ThreadContext::new(id, self.cfg.arch);
+            self.threads[self.current_thread_id] = ThreadContext::new(id, self.cfg.arch);
         }
 
         self.init_stack_aarch64();
@@ -610,8 +637,7 @@ impl Emu {
             crate::threading::context::ArchThreadState::AArch64 { .. }
         ) {
             let id = self.threads[self.current_thread_id].id;
-            self.threads[self.current_thread_id] =
-                crate::threading::context::ThreadContext::new(id, self.cfg.arch);
+            self.threads[self.current_thread_id] = ThreadContext::new(id, self.cfg.arch);
         }
 
         self.instruction_state = InstructionState::default();
@@ -748,15 +774,15 @@ impl Emu {
             .create_map("test", 0, 1024, Permission::READ_WRITE_EXECUTE)
             .expect("cannot create test map");
         mem.write_qword(0, 0x1122334455667788);
-        assert!(mem.read_qword(0) == 0x1122334455667788);
+        assert_eq!(mem.read_qword(0), 0x1122334455667788);
         self.maps.free("test");
 
         // some tests
-        assert!(get_bit!(0xffffff00u32, 0) == 0);
-        assert!(get_bit!(0xffffffffu32, 5) == 1);
-        assert!(get_bit!(0xffffff00u32, 5) == 0);
-        assert!(get_bit!(0xffffff00u32, 7) == 0);
-        assert!(get_bit!(0xffffff00u32, 8) == 1);
+        assert_eq!(get_bit!(0xffffff00u32, 0), 0);
+        assert_eq!(get_bit!(0xffffffffu32, 5), 1);
+        assert_eq!(get_bit!(0xffffff00u32, 5), 0);
+        assert_eq!(get_bit!(0xffffff00u32, 7), 0);
+        assert_eq!(get_bit!(0xffffff00u32, 8), 1);
 
         let mut a: u32 = 0xffffff00;
         set_bit!(a, 0, 1);
@@ -768,7 +794,7 @@ impl Emu {
         set_bit!(a, 6, 1);
         set_bit!(a, 7, 1);
 
-        assert!(a == 0xffffffff);
+        assert_eq!(a, 0xffffffff);
 
         set_bit!(a, 0, 0);
         set_bit!(a, 1, 0);
@@ -779,7 +805,7 @@ impl Emu {
         set_bit!(a, 6, 0);
         set_bit!(a, 7, 0);
 
-        assert!(a == 0xffffff00);
+        assert_eq!(a, 0xffffff00);
 
         /*
         remove this test because it isn't that correct
@@ -871,7 +897,7 @@ impl Emu {
                 .collect();
             for name in ntdll_map_names {
                 if let Some(mem) = self.maps.get_map_by_name_mut(&name) {
-                    mem.add_permission(crate::maps::mem64::Permission::WRITE);
+                    mem.add_permission(Permission::WRITE);
                 }
             }
 
@@ -1286,15 +1312,15 @@ impl Emu {
         self.maps
             .write_qword(self.heap_addr + 0x480, self.heap_addr + 0x500);
 
-        // At 0x520418 it checks [rdi] == rdi to see if list is empty
-        self.maps
-            .write_qword(self.heap_addr + 0x418, self.heap_addr + 0x418);
-
         if self.heap_arenas.is_empty() {
             self.heap_arenas.push(Box::new(
                 O1Heap::new(self.heap_addr, heap_sz as u32)
                     .expect("Expect new heap_management but failed"),
             ));
+            let heap_handle = HeapHandle::new(0x0, heap_sz as usize, 0, self.heap_arenas.len() - 1);
+            let key = self.handle_management.insert_heap_handle(heap_handle);
+            let process_key = self.handle_management.get_or_insert_process_heap();
+            debug_assert_eq!(key, process_key);
         }
     }
 }

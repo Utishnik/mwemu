@@ -122,7 +122,6 @@ fn test_heap_realloc_small_to_large_32() {
         &[0x1234, 0, p1 as u32, 0x20000],
     ) as u64;
     assert!(p2 != 0);
-    assert_ne!(p1, p2);
     assert_eq!(emu.maps.read_dword(p2).unwrap(), 0x11223344);
 }
 
@@ -267,7 +266,6 @@ fn test_ntdll_rtl_realloc_32() {
         &[0x1234, 0, p1 as u32, 0x400],
     ) as u64;
     assert!(p2 != 0, "RtlReAllocateHeap returned NULL");
-    assert_ne!(p1, p2);
     assert_eq!(emu.maps.read_dword(p2).unwrap(), 0x99887766);
 
     let ret = helpers::call_winapi32(
@@ -397,4 +395,23 @@ fn test_get_proc_address_missing_export_honors_handle_32() {
         addr, 0,
         "missing export must return NULL for a known handle"
     );
+}
+
+// GetProcessHeap must return a non-zero handle (the slab slot 0 is
+// reserved so the first real handle starts at key 1).
+#[test]
+fn test_get_process_heap_returns_handle_32() {
+    helpers::setup();
+    let mut emu = emu32();
+
+    let proc_heap =
+        helpers::call_winapi32(&mut emu, winapi32::kernel32::GetProcessHeap, &[]) as u64;
+    assert_ne!(proc_heap, 0, "GetProcessHeap returned NULL");
+
+    let p = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc_heap as u32, 0, 0x100],
+    ) as u64;
+    assert_ne!(p, 0, "HeapAlloc via GetProcessHeap returned NULL");
 }

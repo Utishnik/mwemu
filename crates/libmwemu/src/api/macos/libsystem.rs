@@ -77,11 +77,7 @@ fn classify(emu: &Emu, addr: u64) -> AllocKind {
 }
 
 /// Releases a pointer allocated by `allocate_memory` (or any alloc_ map).
-/// Honors cfg.heap_free_soft.
 fn release(emu: &mut Emu, addr: u64) {
-    if emu.cfg.heap_free_soft {
-        return;
-    }
     match classify(emu, addr) {
         AllocKind::Arena { .. } => {
             if let Some(heap) = emu.heap_arenas.first_mut() {

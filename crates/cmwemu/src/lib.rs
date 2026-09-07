@@ -1960,16 +1960,6 @@ pub extern "C" fn mwemu_get_short_circuit_sleep(emu: *mut MwemuEmu) -> i32 {
 pub extern "C" fn mwemu_set_short_circuit_sleep(emu: *mut MwemuEmu, value: i32) {
     emu!(emu, ()).cfg.short_circuit_sleep = value != 0;
 }
-/// Get soft heap-free (1/0).
-#[unsafe(no_mangle)]
-pub extern "C" fn mwemu_get_heap_free_soft(emu: *mut MwemuEmu) -> i32 {
-    emu!(emu, 0).cfg.heap_free_soft as i32
-}
-/// Set soft heap-free.
-#[unsafe(no_mangle)]
-pub extern "C" fn mwemu_set_heap_free_soft(emu: *mut MwemuEmu, value: i32) {
-    emu!(emu, ()).cfg.heap_free_soft = value != 0;
-}
 /// Get SSDT LdrInitializeThunk usage (1/0).
 #[unsafe(no_mangle)]
 pub extern "C" fn mwemu_get_ssdt_use_ldr_initialize_thunk(emu: *mut MwemuEmu) -> i32 {

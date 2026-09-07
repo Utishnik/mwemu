@@ -1376,16 +1376,6 @@ impl Emu {
     }
 
     #[setter]
-    pub fn set_heap_free_soft(&mut self, free: bool) {
-        self.emu.cfg.heap_free_soft = free;
-    }
-
-    #[getter]
-    pub fn get_heap_free_soft(&self) -> bool {
-        self.emu.cfg.heap_free_soft
-    }
-
-    #[setter]
     pub fn set_ssdt_use_ldr_initialize_thunk(&mut self, use_ldr: bool) {
         self.emu.cfg.ssdt_use_ldr_initialize_thunk = use_ldr;
     }

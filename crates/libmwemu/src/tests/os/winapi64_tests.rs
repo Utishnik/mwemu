@@ -194,7 +194,6 @@ fn test_heap_realloc_small_to_large_64() {
         &[0x1234, 0, p1, 0x20000],
     );
     assert!(p2 != 0);
-    assert_ne!(p1, p2);
     assert_eq!(emu.maps.read_qword(p2).unwrap(), 0x1122_3344_5566_7788);
 }
 
@@ -363,7 +362,6 @@ fn test_ntdll_rtl_realloc_64() {
         &[0x1234, 0, p1, 0x400],
     );
     assert!(p2 != 0, "RtlReAllocateHeap returned NULL");
-    assert_ne!(p1, p2);
     assert_eq!(emu.maps.read_qword(p2).unwrap(), 0x9988_7766_5544_3322);
 
     // Invalid pointer must return 0 and not free a real allocation.
@@ -375,6 +373,24 @@ fn test_ntdll_rtl_realloc_64() {
     assert_eq!(ret, 0);
 }
 
+// GetProcessHeap must return a non-zero handle (the slab slot 0 is
+// reserved so the first real handle starts at key 1).
+#[test]
+fn test_get_process_heap_returns_handle_64() {
+    helpers::setup();
+    let mut emu = emu64();
+
+    let proc_heap = helpers::call_winapi64(&mut emu, winapi64::kernel32::GetProcessHeap, &[]);
+    assert_ne!(proc_heap, 0, "GetProcessHeap returned NULL");
+
+    // The returned handle must be a usable heap handle.
+    let p = helpers::call_winapi64(
+        &mut emu,
+        winapi64::kernel32::HeapAlloc,
+        &[proc_heap, 0, 0x100],
+    );
+    assert_ne!(p, 0, "HeapAlloc via GetProcessHeap returned NULL");
+}
 // Regression: the 64-bit ordinal mask (0xFFFF_0000_0000_0000) was never set by
 // real arguments, so the ordinal path was unreachable and ordinal calls did
 // read_string(ordinal) -> NULL. lpProcName is an ordinal only when its high

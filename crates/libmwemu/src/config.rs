@@ -22,7 +22,6 @@ pub struct Config {
     // --- Heap behavior ---
     pub max_alloc_size: u64, // allocation cap (default 16MB), larger are truncated
     pub heap_alloc_min_size: u64, // minimum padding for all heap allocations
-    pub heap_free_soft: bool, // mark memory as freed but don't deallocate
 
     // --- Tracing ---
     pub trace_mem: bool,   // show memory operations in every step
@@ -180,9 +179,8 @@ impl Config {
             max_instructions: None,
             timeout_secs: None,
             max_faults: None,
-            short_circuit_sleep: false,
             heap_alloc_min_size: 0,
-            heap_free_soft: false,
+            short_circuit_sleep: false,
             allow_empty_code_blocks: false,
             ssdt_use_ldr_initialize_thunk: false,
         }

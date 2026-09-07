@@ -21,6 +21,20 @@ pub struct O1HeapDiagnostics {
     pub oom_count: usize,
 }
 
+/// Result of a successful reallocation.
+///
+/// The allocator owns fragment metadata, while the guest bytes live in the
+/// emulator's memory maps. `new_addr` is therefore returned separately from
+/// the copy operation. `copy_size == 0` means the allocation stayed in place;
+/// otherwise the caller must copy `copy_size` bytes from the old address to
+/// `new_addr` using an overlap-safe copy.
+pub struct ReallocResult {
+    /// Address at which the resized allocation is now located.
+    pub new_addr: u64,
+    /// Number of old allocation bytes that must be copied to `new_addr`.
+    pub copy_size: usize,
+}
+
 const UNDEFINE_OFFSET: u32 = 0xffffffffu32;
 
 struct Fragment {
@@ -66,13 +80,17 @@ impl O1Heap {
     }
 
     fn round_up_to_power_of_2(&self, x: usize) -> usize {
-        if x == 0 {
+        if x <= 1 {
             return 1;
+        }
+        let highest = 1usize << (usize::BITS - 1);
+        if x > highest {
+            return 0;
         }
         if x.is_power_of_two() {
             return x;
         }
-        1 << (usize::BITS - x.leading_zeros())
+        1usize << (usize::BITS - x.leading_zeros())
     }
 
     fn log2_ceil(&self, x: usize) -> usize {
@@ -173,13 +191,9 @@ impl O1Heap {
         }
 
         // Update peak request size
-        if likely(self.diagnostics.peak_request_size < amount) {
-            self.diagnostics.peak_request_size = amount;
-        }
-
-        // Calculate fragment size (power of 2)
+        // Calculate fragment size (power of 2).
         let fragment_size = self.round_up_to_power_of_2(amount);
-        if fragment_size > self.diagnostics.capacity {
+        if fragment_size == 0 || fragment_size > self.diagnostics.capacity {
             self.diagnostics.oom_count += 1;
             return None;
         }
@@ -416,5 +430,355 @@ impl O1Heap {
             // No merging needed
             self.rebin(frag_rc);
         }
+    }
+
+    /// Resize one active allocation while preserving its fragment metadata.
+    ///
+    /// The algorithm follows four ordered cases:
+    ///
+    /// 1. A zero request delegates to `free` and returns no allocation.
+    /// 2. A smaller/equal rounded size stays at the same address; a large
+    ///    enough remainder becomes a new free fragment.
+    /// 3. A larger request first tries to consume a free right neighbor, so
+    ///    the guest bytes remain in place.
+    /// 4. If the right side is insufficient, a free left neighbor may absorb
+    ///    the allocation. This moves bytes backward and reports `copy_size`.
+    ///
+    /// If neither in-place option fits, the final fallback allocates a new
+    /// fragment and frees the old one. The caller performs the reported copy.
+    /// All fragment sizes are rounded powers of two, matching `allocate`.
+    pub fn reallocate(&mut self, address: u64, new_amount: usize) -> Option<ReallocResult> {
+        if unlikely(new_amount == 0) {
+            self.free(address);
+            return None;
+        }
+        self.diagnostics.peak_request_size =
+            cmp::max(self.diagnostics.peak_request_size, new_amount);
+        // Convert the guest address into the arena-relative hash key. A
+        // below-base, overflowing, unknown, or freed address is invalid.
+        let offset = match address.checked_sub(self.base) {
+            Some(o) if o <= u32::MAX as u64 => o as u32,
+            _ => return None,
+        };
+        let frag = match self.find_fragment_by_offset(offset) {
+            Some(f) => f,
+            None => return None,
+        };
+        if !frag.borrow().used {
+            return None;
+        }
+
+        // Existing fragments are power-of-two-sized arena blocks. Reject
+        // corrupt metadata before using it in diagnostics or pointer math.
+        let frag_size = frag.borrow().size as usize;
+        if frag_size < FRAGMENT_SIZE_MIN
+            || frag_size > self.diagnostics.capacity
+            || frag_size % FRAGMENT_SIZE_MIN != 0
+        {
+            return None;
+        }
+
+        // The allocator reserves the next power-of-two fragment size. A
+        // zero result means the rounding operation would overflow usize.
+        let new_frag_size = self.round_up_to_power_of_2(new_amount);
+        if new_frag_size == 0
+            || new_amount > self.diagnostics.capacity
+            || new_frag_size > self.diagnostics.capacity
+        {
+            self.diagnostics.oom_count += 1;
+            return None;
+        }
+
+        // Snapshot both neighbors before changing links or bin membership.
+        // `prev` is weak because the address-order graph owns forward links.
+        let prev_rc = frag.borrow().prev.as_ref().and_then(|w| w.upgrade());
+        let prev_free = match &prev_rc {
+            Some(p) => !p.borrow().used,
+            None => false,
+        };
+        let next_rc = frag.borrow().next.clone();
+        let next_free = match &next_rc {
+            Some(n) => !n.borrow().used,
+            None => false,
+        };
+        let prev_size = prev_rc
+            .as_ref()
+            .map(|p| p.borrow().size as usize)
+            .unwrap_or(0);
+        let next_size = next_rc
+            .as_ref()
+            .map(|n| n.borrow().size as usize)
+            .unwrap_or(0);
+
+        // Case 1 — shrink or keep the same rounded size. The user pointer
+        // stays unchanged. If the released tail is large enough to be a
+        // legal fragment, unlink any adjacent free fragment, create the new
+        // free tail, update the address-order links, and rebin that tail.
+        // A sub-minimum tail is deliberately left as internal slack.
+        if new_frag_size <= frag_size {
+            let leftover = frag_size - new_frag_size;
+            if likely(leftover >= FRAGMENT_SIZE_MIN) {
+                if self.diagnostics.allocated < leftover {
+                    return None;
+                }
+                self.diagnostics.allocated -= leftover;
+                let next_next = if next_free {
+                    let next = next_rc.as_ref().unwrap();
+                    self.unbin(next);
+                    let next_offset = next.borrow().offset;
+                    let next_next = next.borrow().next.clone();
+                    next.borrow_mut().size = 0;
+                    self.hashes.remove(&next_offset);
+                    next_next
+                } else {
+                    frag.borrow().next.clone()
+                };
+                let new_frag = Rc::new(RefCell::new(Fragment::new(
+                    offset + new_frag_size as u32,
+                    (if next_free {
+                        leftover + next_size
+                    } else {
+                        leftover
+                    }) as u32,
+                )));
+                new_frag.borrow_mut().next = next_next.clone();
+                new_frag.borrow_mut().prev = Some(Rc::downgrade(&frag));
+                if let Some(ref nn) = next_next {
+                    nn.borrow_mut().prev = Some(Rc::downgrade(&new_frag));
+                }
+                frag.borrow_mut().next = Some(new_frag.clone());
+                frag.borrow_mut().size = new_frag_size as u32;
+                self.hashes
+                    .insert(offset + new_frag_size as u32, new_frag.clone());
+                self.rebin(new_frag);
+            }
+            return Some(ReallocResult {
+                new_addr: address,
+                copy_size: 0,
+            });
+        }
+
+        // Case 2 — grow forward in place. Consume the free fragment on the
+        // right, then either split its remainder into a new free tail or
+        // absorb it completely. No guest-byte copy is needed.
+        if next_free && (frag_size + next_size) >= new_frag_size {
+            let next = next_rc.as_ref().unwrap();
+            self.unbin(next);
+            let next_offset = next.borrow().offset;
+            let next_next = next.borrow().next.clone();
+            next.borrow_mut().size = 0;
+            self.hashes.remove(&next_offset);
+            let leftover = frag_size + next_size - new_frag_size;
+            if likely(leftover >= FRAGMENT_SIZE_MIN) {
+                let new_frag = Rc::new(RefCell::new(Fragment::new(
+                    offset + new_frag_size as u32,
+                    leftover as u32,
+                )));
+                new_frag.borrow_mut().next = next_next.clone();
+                new_frag.borrow_mut().prev = Some(Rc::downgrade(&frag));
+                if let Some(ref nn) = next_next {
+                    nn.borrow_mut().prev = Some(Rc::downgrade(&new_frag));
+                }
+                frag.borrow_mut().next = Some(new_frag.clone());
+                frag.borrow_mut().size = new_frag_size as u32;
+                self.hashes
+                    .insert(offset + new_frag_size as u32, new_frag.clone());
+                self.rebin(new_frag);
+                self.diagnostics.allocated += new_frag_size - frag_size;
+            } else {
+                frag.borrow_mut().next = next_next.clone();
+                if let Some(ref nn) = next_next {
+                    nn.borrow_mut().prev = Some(Rc::downgrade(&frag));
+                }
+                frag.borrow_mut().size = (frag_size + next_size) as u32;
+                self.diagnostics.allocated += next_size;
+            }
+            self.diagnostics.peak_allocated =
+                cmp::max(self.diagnostics.peak_allocated, self.diagnostics.allocated);
+            return Some(ReallocResult {
+                new_addr: address,
+                copy_size: 0,
+            });
+        }
+
+        // Case 3 — grow backward when the right side alone is insufficient.
+        // The free predecessor becomes the resized allocation, optionally
+        // consuming the free successor too. Metadata is rebuilt before the
+        // caller moves the old payload backward to `prev_offset`.
+        if prev_free && (prev_size + frag_size + next_size) >= new_frag_size {
+            let prev = prev_rc.as_ref().unwrap();
+            self.unbin(prev);
+            let prev_offset = prev.borrow().offset;
+            if next_free {
+                self.unbin(next_rc.as_ref().unwrap());
+            }
+            let after = if next_free {
+                next_rc.as_ref().unwrap().borrow().next.clone()
+            } else {
+                frag.borrow().next.clone()
+            };
+            let leftover = prev_size + frag_size + next_size - new_frag_size;
+            prev.borrow_mut().used = true;
+            if likely(leftover >= FRAGMENT_SIZE_MIN) {
+                let new_frag = Rc::new(RefCell::new(Fragment::new(
+                    prev_offset + new_frag_size as u32,
+                    leftover as u32,
+                )));
+                new_frag.borrow_mut().next = after.clone();
+                new_frag.borrow_mut().prev = Some(Rc::downgrade(&prev));
+                if let Some(ref nn) = after {
+                    nn.borrow_mut().prev = Some(Rc::downgrade(&new_frag));
+                }
+                prev.borrow_mut().next = Some(new_frag.clone());
+                prev.borrow_mut().size = new_frag_size as u32;
+                self.hashes
+                    .insert(prev_offset + new_frag_size as u32, new_frag.clone());
+                self.rebin(new_frag);
+                self.diagnostics.allocated += new_frag_size - frag_size;
+            } else {
+                prev.borrow_mut().next = after.clone();
+                if let Some(ref nn) = after {
+                    nn.borrow_mut().prev = Some(Rc::downgrade(&prev));
+                }
+                prev.borrow_mut().size = (prev_size + frag_size + next_size) as u32;
+                self.diagnostics.allocated += prev_size + next_size;
+            }
+            frag.borrow_mut().used = false;
+            frag.borrow_mut().size = 0;
+            self.hashes.remove(&offset);
+            if next_free {
+                let next = next_rc.as_ref().unwrap();
+                let next_offset = next.borrow().offset;
+                next.borrow_mut().size = 0;
+                self.hashes.remove(&next_offset);
+            }
+            self.hashes.insert(prev_offset, prev.clone());
+            self.diagnostics.peak_allocated =
+                cmp::max(self.diagnostics.peak_allocated, self.diagnostics.allocated);
+            return Some(ReallocResult {
+                new_addr: self.base + prev_offset as u64,
+                copy_size: frag_size,
+            });
+        }
+
+        // Case 4 — neither adjacent layout can satisfy the request. Allocate
+        // a separate fragment and release the old one. The metadata remains
+        // valid immediately; the caller copies the old payload afterward.
+        let new_addr = self.allocate(new_amount)?;
+        self.free(address);
+        Some(ReallocResult {
+            new_addr,
+            copy_size: frag_size,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_heap() -> O1Heap {
+        O1Heap::new(0x1000, 0x10000).expect("O1Heap::new")
+    }
+
+    #[test]
+    fn test_reallocate_in_place_grow_forward() {
+        let mut h = new_heap();
+        let a = h.allocate(0x100).expect("alloc");
+        let r = h.reallocate(a, 0x400).expect("realloc");
+        assert_eq!(r.new_addr, a);
+        assert_eq!(r.copy_size, 0);
+        assert_eq!(h.allocation_size(a), Some(0x400));
+        assert!(h.check_fragment_exists(a));
+        assert_eq!(h.diagnostics.allocated, 0x400);
+    }
+
+    #[test]
+    fn test_reallocate_shrink_splits_leftover() {
+        let mut h = new_heap();
+        let a = h.allocate(0x400).expect("alloc");
+        let r = h.reallocate(a, 0x100).expect("realloc");
+        assert_eq!(r.new_addr, a);
+        assert_eq!(r.copy_size, 0);
+        assert_eq!(h.allocation_size(a), Some(0x100));
+        let c = h.allocate(0x100).expect("alloc of leftover");
+        assert_eq!(c, a + 0x100);
+    }
+
+    #[test]
+    fn test_reallocate_grow_returns_result() {
+        let mut h = new_heap();
+        let a = h.allocate(0x100).expect("alloc A");
+        let b = h.allocate(0x100).expect("alloc B");
+        h.free(a);
+        let r = h.reallocate(b, 0x400).expect("realloc");
+        // Either the backward expansion (copy_size == old frag size) or the
+        // forward expansion (copy_size == 0) may be taken depending on
+        // which neighbor absorbed. Both paths must produce a live 0x400
+        // allocation at the returned address.
+        assert!(r.copy_size == 0 || r.copy_size == 0x100);
+        assert_eq!(h.allocation_size(r.new_addr), Some(0x400));
+    }
+
+    #[test]
+    fn test_reallocate_fallback_moves() {
+        let mut h = new_heap();
+        let a = h.allocate(0x100).expect("alloc A");
+        let b = h.allocate(0x100).expect("alloc B");
+        let _big = h.allocate(0x8000).expect("alloc tail");
+        let r = h.reallocate(b, 0x4000).expect("realloc");
+        assert_ne!(r.new_addr, b);
+        assert_eq!(r.copy_size, 0x100);
+        assert!(h.allocation_size(b).is_none());
+        assert!(h.check_fragment_exists(r.new_addr));
+        assert_eq!(h.diagnostics.allocated, 0x100 + 0x4000 + 0x8000);
+    }
+
+    #[test]
+    fn test_reallocate_oom() {
+        let mut h = new_heap();
+        let a = h.allocate(0x100).expect("alloc");
+        let r = h.reallocate(a, 0x20000);
+        assert!(r.is_none());
+        assert_eq!(h.diagnostics.oom_count, 1);
+        assert!(h.check_fragment_exists(a));
+    }
+
+    #[test]
+    fn test_reallocate_zero_frees() {
+        let mut h = new_heap();
+        let a = h.allocate(0x100).expect("alloc");
+        let r = h.reallocate(a, 0);
+        assert!(r.is_none());
+        assert!(!h.check_fragment_exists(a));
+        assert_eq!(h.diagnostics.allocated, 0);
+    }
+
+    #[test]
+    fn test_reallocate_invalid_address() {
+        let mut h = new_heap();
+        assert!(h.reallocate(0xff8, 0x100).is_none());
+        assert!(h.reallocate(0x1040, 0x100).is_none());
+        let a = h.allocate(0x100).expect("alloc");
+        h.free(a);
+        assert!(h.reallocate(a, 0x100).is_none());
+    }
+
+    #[test]
+    fn test_round_up_overflow_returns_oom() {
+        let mut h = new_heap();
+        let r = h.allocate(usize::MAX - 1);
+        assert!(r.is_none());
+        assert_eq!(h.diagnostics.oom_count, 1);
+    }
+
+    #[test]
+    fn test_reallocate_huge_amount_is_oom() {
+        let mut h = new_heap();
+        let a = h.allocate(0x100).expect("alloc");
+        let r = h.reallocate(a, usize::MAX - 1);
+        assert!(r.is_none());
+        assert_eq!(h.diagnostics.oom_count, 1);
+        assert!(h.check_fragment_exists(a));
     }
 }
