@@ -17,6 +17,9 @@ handle id to get the right handle. In the document, it doesn't specific that the
 */
 
 enum HandleType {
+    /// Permanently occupies slab slot 0 so no real handle ever gets the
+    /// NULL-like key 0 (guests treat handle 0 as "no handle").
+    Reserved,
     FileHandle(FileHandle),
     MappingHandle(MappingHandle),
     HeapHandle(HeapHandle),
@@ -36,8 +39,10 @@ impl Default for HandleManagement {
 
 impl HandleManagement {
     pub fn new() -> Self {
+        let mut handle_types = Slab::with_capacity(200);
+        handle_types.insert(HandleType::Reserved);
         Self {
-            handle_types: Slab::with_capacity(200),
+            handle_types,
             number_of_handle: 0,
             process_heap_key: None,
         }
@@ -155,9 +160,9 @@ impl HandleManagement {
             None
         }
     }
-
     /// Return the slab key for the implicit process-heap `HeapHandle`,
-    /// creating one (bound to arena 0) on first call.
+    /// creating one (bound to arena 0) on first call. Slot 0 is reserved,
+    /// so the first real handle (and thus this key) is always non-zero.
     pub fn get_or_insert_process_heap(&mut self) -> u32 {
         if let Some(k) = self.process_heap_key {
             if matches!(
@@ -165,6 +170,15 @@ impl HandleManagement {
                 Some(HandleType::HeapHandle(_))
             ) {
                 return k;
+            }
+        }
+        for (k, entry) in self.handle_types.iter() {
+            if let HandleType::HeapHandle(hh) = entry {
+                if hh.arena == 0 {
+                    let key = k as u32;
+                    self.process_heap_key = Some(key);
+                    return key;
+                }
             }
         }
         let key = self.insert_heap_handle(HeapHandle::new(0, 0, 0, 0));
@@ -185,36 +199,9 @@ impl HandleManagement {
         }
         let key = handle as u32;
         if let Some(HandleType::HeapHandle(hh)) = self.handle_types.get(key as usize) {
-            Some((hh.arena, hh.maximum_size))
+            Some((hh.arena, hh.maxSZ as u64))
         } else {
             None
-        }
-    }
-
-    /// Record an allocation against the heap identified by `handle`.
-    /// Unknown/zero handles are attributed to the process heap (lenient —
-    /// existing tests pass 0x1234 as a fake handle).
-    pub fn record_heap_allocation(&mut self, handle: u64, addr: u64, size: u64) {
-        let key = self.resolve_heap_handle_key(handle);
-        if let Some(hh) = self.get_mut_heap_handle(key) {
-            hh.record_allocation(addr, size);
-        }
-    }
-
-    pub fn forget_heap_allocation(&mut self, handle: u64, addr: u64) {
-        let key = self.resolve_heap_handle_key(handle);
-        if let Some(hh) = self.get_mut_heap_handle(key) {
-            hh.forget_allocation(addr);
-        }
-    }
-
-    /// Drop any matching allocation record across every live heap handle.
-    /// Used by callers that don't carry a heap handle (e.g. `LocalFree`).
-    pub fn forget_heap_allocation_any(&mut self, addr: u64) {
-        for (_, entry) in self.handle_types.iter_mut() {
-            if let HandleType::HeapHandle(hh) = entry {
-                hh.forget_allocation(addr);
-            }
         }
     }
 

@@ -68,8 +68,7 @@ fn RtlFreeHeap(emu: &mut emu::Emu) {
         emu.regs_mut().rax = 1;
     } else {
         if base_addr != 0 {
-            emu.handle_management
-                .forget_heap_allocation(hndl, base_addr);
+            heap_engine::heap_free(emu, hndl, base_addr);
         }
         if emu.cfg.verbose >= 1 {
             log::trace!("trying to free a systems map {}", base_addr);
@@ -107,8 +106,7 @@ pub fn RtlReAllocateHeap(emu: &mut emu::Emu) {
         emu.regs_mut().rax = 0;
         return;
     }
-
-    let new_addr = match heap_engine::heap_allocate(emu, handle, new_size) {
+    let new_addr = match heap_engine::heap_reallocate(emu, handle, old_ptr, new_size) {
         Some(a) => a,
         None => {
             heap_engine::fail_allocation(emu, flags);
@@ -117,27 +115,12 @@ pub fn RtlReAllocateHeap(emu: &mut emu::Emu) {
         }
     };
 
-    let copy_size = std::cmp::min(old_size, new_size as usize);
-    if !emu.maps.memcpy(new_addr, old_ptr, copy_size) {
-        heap_engine::heap_free(emu, handle, new_addr);
-        heap_engine::fail_allocation(emu, flags);
-        emu.regs_mut().rax = 0;
-        return;
-    }
-
     if (flags & constants::HEAP_ZERO_MEMORY) != 0 && (new_size as usize) > old_size {
         emu.maps.memset(
             new_addr + old_size as u64,
             0,
             (new_size as usize) - old_size,
         );
-    }
-
-    if !emu.cfg.heap_free_soft {
-        heap_engine::heap_free(emu, handle, old_ptr);
-    } else {
-        emu.handle_management
-            .forget_heap_allocation(handle, old_ptr);
     }
 
     emu.regs_mut().rax = new_addr;

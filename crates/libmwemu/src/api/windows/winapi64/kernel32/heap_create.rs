@@ -14,10 +14,13 @@ pub fn HeapCreate(emu: &mut emu::Emu) {
         maxSZ
     );
 
-    let arena = emu.create_heap_arena();
-    let key = emu
-        .handle_management
-        .insert_heap_handle(HeapHandle::new(opts, initSZ, maxSZ, arena));
+    let arena = emu.create_heap_arena(initSZ as usize, maxSZ as usize, opts);
+    let key = emu.handle_management.insert_heap_handle(HeapHandle::new(
+        opts,
+        initSZ as usize,
+        maxSZ as usize,
+        arena,
+    ));
     log_red!(emu, "kernel32!HeapCreate handle=0x{:x}", key as u64);
     emu.regs_mut().rax = key as u64;
 }

@@ -325,6 +325,7 @@ impl ExportIndexRegistry {
     }
 
     // Resolve address to its name
+    #[inline]
     pub fn resolve_address_module(&self, module_name: &str, addr: u64) -> Option<&str> {
         self.by_name[module_name].resolve_address(addr)
     }

@@ -596,12 +596,6 @@ int32_t mwemu_get_short_circuit_sleep(struct MwemuEmu *emu);
 // Set short-circuit-sleep.
 void mwemu_set_short_circuit_sleep(struct MwemuEmu *emu, int32_t value);
 
-// Get soft heap-free (1/0).
-int32_t mwemu_get_heap_free_soft(struct MwemuEmu *emu);
-
-// Set soft heap-free.
-void mwemu_set_heap_free_soft(struct MwemuEmu *emu, int32_t value);
-
 // Get SSDT LdrInitializeThunk usage (1/0).
 int32_t mwemu_get_ssdt_use_ldr_initialize_thunk(struct MwemuEmu *emu);
 
