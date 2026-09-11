@@ -1372,6 +1372,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mwemu-snapshot"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "libmwemu",
+ "nix",
+ "slab",
+]
+
+[[package]]
 name = "mwemu-x86-test"
 version = "0.1.0"
 dependencies = [

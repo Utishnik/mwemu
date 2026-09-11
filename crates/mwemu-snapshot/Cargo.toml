@@ -1,0 +1,22 @@
+[package]
+name = "mwemu-snapshot"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+repository = "https://github.com/mwemuorg/mwemu-snapshot"
+homepage = "https://github.com/mwemuorg/mwemu-snapshot"
+readme = "README.md"
+description = "Clone a live Linux process into mwemu: ptrace-attach, copy its registers and full memory map, and hand libmwemu a real Emu at the exact point it was captured."
+keywords = ["ptrace", "emulator", "forensics", "reverse-engineering", "linux"]
+categories = ["development-tools", "emulators"]
+
+[[bin]]
+name = "mwemu-snapshot"
+path = "src/main.rs"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libmwemu = { path = "../libmwemu", version = "0.25.4" }
+nix = { version = "0.29", features = ["ptrace", "process", "uio"] }
+ahash = "0.8"
+slab = "0.4"

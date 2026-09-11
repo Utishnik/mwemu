@@ -6,10 +6,10 @@ use std::{
 use crate::emu::Emu;
 use crate::serialization::emu::SerializableEmu;
 
-mod emu;
+pub mod emu;
 mod fpu;
 mod instant;
-mod maps;
+pub mod maps;
 mod minidump;
 mod pe32;
 mod pe64;
