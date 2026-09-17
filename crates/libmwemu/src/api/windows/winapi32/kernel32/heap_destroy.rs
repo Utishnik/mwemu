@@ -21,7 +21,10 @@ pub fn HeapDestroy(emu: &mut emu::Emu) {
         return;
     }
     match emu.handle_management.remove_heap_handle(key) {
-        Some(_) => emu.regs_mut().rax = 1,
+        Some(handle) => {
+            emu.destroy_heap_arena(handle.arena);
+            emu.regs_mut().rax = 1;
+        }
         None => emu.regs_mut().rax = 0,
     }
 }

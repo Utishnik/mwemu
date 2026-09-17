@@ -415,3 +415,145 @@ fn test_get_process_heap_returns_handle_32() {
     ) as u64;
     assert_ne!(p, 0, "HeapAlloc via GetProcessHeap returned NULL");
 }
+
+// Private-heap lifecycle: create -> alloc -> free -> alloc -> destroy, plus
+// zero-size HeapCreate clamping (must not panic).
+#[test]
+fn test_heap_lifecycle_32() {
+    helpers::setup();
+    let mut emu = emu32();
+
+    let heap = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapCreate,
+        &[0, 0x1000, 0x10000],
+    ) as u64;
+    assert_ne!(heap, 0, "HeapCreate returned NULL");
+
+    let p1 = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[heap as u32, 0, 0x100],
+    ) as u64;
+    assert_ne!(p1, 0, "HeapAlloc on private heap returned NULL");
+    emu.maps.write_dword(p1, 0xfeedface);
+
+    let freed = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapFree,
+        &[heap as u32, 0, p1 as u32],
+    ) as u64;
+    assert_eq!(freed, 1, "HeapFree on private heap failed");
+
+    let p2 = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[heap as u32, 0, 0x100],
+    ) as u64;
+    assert_ne!(p2, 0, "HeapAlloc after free on private heap returned NULL");
+
+    let destroyed =
+        helpers::call_winapi32(&mut emu, winapi32::kernel32::HeapDestroy, &[heap as u32]) as u64;
+    assert_eq!(destroyed, 1, "HeapDestroy failed");
+    let again =
+        helpers::call_winapi32(&mut emu, winapi32::kernel32::HeapDestroy, &[heap as u32]) as u64;
+    assert_eq!(again, 0, "second HeapDestroy must fail");
+
+    let zero = helpers::call_winapi32(&mut emu, winapi32::kernel32::HeapCreate, &[0, 0, 0]) as u64;
+    assert_ne!(zero, 0, "HeapCreate(0,0,0) must clamp and succeed");
+    let destroyed =
+        helpers::call_winapi32(&mut emu, winapi32::kernel32::HeapDestroy, &[zero as u32]) as u64;
+    assert_eq!(destroyed, 1, "HeapDestroy of clamped heap failed");
+}
+
+// Growing a block whose predecessor is free must move it backward in place
+// (O1Heap backward expansion) while preserving the payload.
+#[test]
+fn test_heap_realloc_backward_move_preserves_data_32() {
+    helpers::setup();
+    let mut emu = emu32();
+
+    let proc = helpers::call_winapi32(&mut emu, winapi32::kernel32::GetProcessHeap, &[]) as u64;
+    assert_ne!(proc, 0);
+
+    let a = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc as u32, 0, 0x8000],
+    ) as u64;
+    let b = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc as u32, 0, 0x100],
+    ) as u64;
+    let _c = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc as u32, 0, 0x100],
+    ) as u64;
+    assert!(a != 0 && b != 0);
+
+    emu.maps.write_dword(b, 0xabcd1234);
+    let freed = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapFree,
+        &[proc as u32, 0, a as u32],
+    ) as u64;
+    assert_eq!(freed, 1);
+
+    let p2 = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapReAlloc,
+        &[proc as u32, 0, b as u32, 0x4000],
+    ) as u64;
+    assert_eq!(
+        p2, a,
+        "backward expansion must reuse the freed predecessor address"
+    );
+    assert_eq!(
+        emu.maps.read_dword(p2).unwrap(),
+        0xabcd1234,
+        "payload must survive the backward move"
+    );
+}
+
+// Growing a block whose both neighbors are in use must move it (allocate +
+// copy + free) while preserving the payload.
+#[test]
+fn test_heap_realloc_fallback_move_preserves_data_32() {
+    helpers::setup();
+    let mut emu = emu32();
+
+    let proc = helpers::call_winapi32(&mut emu, winapi32::kernel32::GetProcessHeap, &[]) as u64;
+    assert_ne!(proc, 0);
+
+    let _a = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc as u32, 0, 0x100],
+    ) as u64;
+    let b = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc as u32, 0, 0x100],
+    ) as u64;
+    let _big = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapAlloc,
+        &[proc as u32, 0, 0x8000],
+    ) as u64;
+    assert_ne!(b, 0);
+
+    emu.maps.write_dword(b, 0x55667788);
+    let p2 = helpers::call_winapi32(
+        &mut emu,
+        winapi32::kernel32::HeapReAlloc,
+        &[proc as u32, 0, b as u32, 0x4000],
+    ) as u64;
+    assert_ne!(p2, b, "fallback must relocate the block");
+    assert_eq!(
+        emu.maps.read_dword(p2).unwrap(),
+        0x55667788,
+        "payload must survive the fallback move"
+    );
+}

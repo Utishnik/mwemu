@@ -67,9 +67,6 @@ fn RtlFreeHeap(emu: &mut emu::Emu) {
         heap_engine::heap_free(emu, hndl, base_addr);
         emu.regs_mut().rax = 1;
     } else {
-        if base_addr != 0 {
-            heap_engine::heap_free(emu, hndl, base_addr);
-        }
         if emu.cfg.verbose >= 1 {
             log::trace!("trying to free a systems map {}", base_addr);
         }

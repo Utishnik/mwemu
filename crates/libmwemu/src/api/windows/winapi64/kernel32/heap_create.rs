@@ -14,7 +14,14 @@ pub fn HeapCreate(emu: &mut emu::Emu) {
         maxSZ
     );
 
-    let arena = emu.create_heap_arena(initSZ as usize, maxSZ as usize, opts);
+    let arena = match emu.create_heap_arena(initSZ as usize, maxSZ as usize, opts) {
+        Some(a) => a,
+        None => {
+            log_red!(emu, "kernel32!HeapCreate failed: cannot reserve arena");
+            emu.regs_mut().rax = 0;
+            return;
+        }
+    };
     let key = emu.handle_management.insert_heap_handle(HeapHandle::new(
         opts,
         initSZ as usize,

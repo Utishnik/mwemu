@@ -686,8 +686,11 @@ impl Maps {
             .get(name)
             .unwrap_or_else(|| unreachable!("map name {} not found", name));
         let mem = self.mem_slab.get_mut(*id).unwrap();
+        // Capture the base before `clear()` zeroes it, otherwise the map
+        // table keeps a stale base entry pointing at the removed slab slot.
+        let base = mem.get_base();
         mem.clear();
-        self.maps.remove(&mem.get_base());
+        self.maps.remove(&base);
         self.mem_slab.remove(*id);
         self.tlb.borrow_mut().flush();
         self.name_map.remove(name);

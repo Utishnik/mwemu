@@ -434,13 +434,14 @@ impl Emu {
 
     /// Create a fresh private O1Heap arena for `HeapCreate`. Ensures entry 0
     /// (the process heap) exists first so the new arena always lives at
-    /// index >= 1.
+    /// index >= 1. Returns the new arena index, or `None` when the guest
+    /// memory could not be reserved (Windows would return a NULL handle).
     pub fn create_heap_arena(
         &mut self,
         initial_size: usize,
         maximum_size: usize,
         opts: u32,
-    ) -> usize {
+    ) -> Option<usize> {
         let _ = self.heap_mut();
         let default_size = 4 * 1024 * 1024;
         let requested_size = if maximum_size == 0 {
@@ -453,10 +454,7 @@ impl Emu {
             .min(u32::MAX as usize);
         let name = format!(".heap_{}", self.heap_arenas.len());
 
-        let base = self
-            .maps
-            .alloc(arena_size as u64)
-            .expect("cannot reserve heap arena");
+        let base = self.maps.alloc(arena_size as u64)?;
         self.maps
             .create_map(
                 name.as_str(),
@@ -468,11 +466,26 @@ impl Emu {
                     Permission::READ_WRITE
                 },
             )
-            .expect("cannot create heap map");
+            .ok()?;
         self.heap_arenas.push(Box::new(
             O1Heap::new(base, arena_size as u32).expect("cannot init heap arena"),
         ));
-        self.heap_arenas.len() - 1
+        Some(self.heap_arenas.len() - 1)
+    }
+
+    /// Release the guest memory backing a private heap arena created by
+    /// `create_heap_arena`. The `O1Heap` entry stays in `heap_arenas` as an
+    /// unreachable tombstone so the indices stored in other `HeapHandle`s
+    /// remain valid; its map name is `.heap_{idx}` (arena 0, the process
+    /// heap, is `.heap` and must never be destroyed here).
+    pub fn destroy_heap_arena(&mut self, arena_idx: usize) {
+        if arena_idx == 0 || arena_idx >= self.heap_arenas.len() {
+            return;
+        }
+        let name = format!(".heap_{}", arena_idx);
+        if self.maps.exists_mapname(&name) {
+            self.maps.free(&name);
+        }
     }
 
     pub fn heap_arena_mut(&mut self, idx: usize) -> Option<&mut O1Heap> {

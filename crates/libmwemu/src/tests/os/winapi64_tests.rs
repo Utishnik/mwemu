@@ -520,3 +520,138 @@ fn test_get_proc_address_forwarder_64() {
         "forwarder by ordinal must resolve into backing.dll"
     );
 }
+
+// Private-heap lifecycle: create -> alloc -> free -> alloc -> destroy, plus
+// zero-size HeapCreate clamping (must not panic).
+#[test]
+fn test_heap_lifecycle_64() {
+    helpers::setup();
+    let mut emu = emu64();
+
+    let heap = helpers::call_winapi64(
+        &mut emu,
+        winapi64::kernel32::HeapCreate,
+        &[0, 0x1000, 0x10000],
+    );
+    assert_ne!(heap, 0, "HeapCreate returned NULL");
+
+    let p1 = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[heap, 0, 0x100]);
+    assert_ne!(p1, 0, "HeapAlloc on private heap returned NULL");
+    emu.maps.write_dword(p1, 0xfeedface);
+
+    let freed = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapFree, &[heap, 0, p1]);
+    assert_eq!(freed, 1, "HeapFree on private heap failed");
+
+    let p2 = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[heap, 0, 0x100]);
+    assert_ne!(p2, 0, "HeapAlloc after free on private heap returned NULL");
+
+    let destroyed = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapDestroy, &[heap]);
+    assert_eq!(destroyed, 1, "HeapDestroy failed");
+    let again = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapDestroy, &[heap]);
+    assert_eq!(again, 0, "second HeapDestroy must fail");
+
+    let zero = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapCreate, &[0, 0, 0]);
+    assert_ne!(zero, 0, "HeapCreate(0,0,0) must clamp and succeed");
+    let destroyed = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapDestroy, &[zero]);
+    assert_eq!(destroyed, 1, "HeapDestroy of clamped heap failed");
+}
+
+// Growing a block whose predecessor is free must move it backward in place
+// (O1Heap backward expansion) while preserving the payload.
+#[test]
+fn test_heap_realloc_backward_move_preserves_data_64() {
+    helpers::setup();
+    let mut emu = emu64();
+
+    let proc = helpers::call_winapi64(&mut emu, winapi64::kernel32::GetProcessHeap, &[]);
+    assert_ne!(proc, 0);
+
+    let a = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x8000]);
+    let b = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x100]);
+    let _c = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x100]);
+    assert!(a != 0 && b != 0);
+
+    emu.maps.write_dword(b, 0xabcd1234);
+    let freed = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapFree, &[proc, 0, a]);
+    assert_eq!(freed, 1);
+
+    let p2 = helpers::call_winapi64(
+        &mut emu,
+        winapi64::kernel32::HeapReAlloc,
+        &[proc, 0, b, 0x4000],
+    );
+    assert_eq!(
+        p2, a,
+        "backward expansion must reuse the freed predecessor address"
+    );
+    assert_eq!(
+        emu.maps.read_dword(p2).unwrap(),
+        0xabcd1234,
+        "payload must survive the backward move"
+    );
+}
+
+// Growing a block whose both neighbors are in use must move it (allocate +
+// copy + free) while preserving the payload.
+#[test]
+fn test_heap_realloc_fallback_move_preserves_data_64() {
+    helpers::setup();
+    let mut emu = emu64();
+
+    let proc = helpers::call_winapi64(&mut emu, winapi64::kernel32::GetProcessHeap, &[]);
+    assert_ne!(proc, 0);
+
+    let _a = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x100]);
+    let b = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x100]);
+    let _big = helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x8000]);
+    assert_ne!(b, 0);
+
+    emu.maps.write_dword(b, 0x55667788);
+    let p2 = helpers::call_winapi64(
+        &mut emu,
+        winapi64::kernel32::HeapReAlloc,
+        &[proc, 0, b, 0x4000],
+    );
+    assert_ne!(p2, b, "fallback must relocate the block");
+    assert_eq!(
+        emu.maps.read_dword(p2).unwrap(),
+        0x55667788,
+        "payload must survive the fallback move"
+    );
+}
+
+// After a serialize/deserialize roundtrip the runtime heap arenas are gone
+// while the `.heap` map survives; the lazy process-heap creation must pick a
+// different map name instead of panicking on the collision.
+#[test]
+fn test_heap_after_deserialize_64() {
+    use crate::serialization::Serialization;
+
+    helpers::setup();
+
+    // Serialization recurses deeply; run the body on a large stack the same
+    // way `should_serialize` does.
+    let handle = std::thread::Builder::new()
+        .stack_size(1024 * 29055)
+        .spawn(|| {
+            let mut emu = emu64();
+
+            let proc = helpers::call_winapi64(&mut emu, winapi64::kernel32::GetProcessHeap, &[]);
+            assert_ne!(proc, 0);
+            let p =
+                helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc, 0, 0x100]);
+            assert_ne!(p, 0);
+
+            let serialized = Serialization::serialize(&emu);
+            let mut emu: Emu = Serialization::deserialize(&serialized);
+
+            let proc2 = helpers::call_winapi64(&mut emu, winapi64::kernel32::GetProcessHeap, &[]);
+            assert_ne!(proc2, 0);
+            let p2 =
+                helpers::call_winapi64(&mut emu, winapi64::kernel32::HeapAlloc, &[proc2, 0, 0x100]);
+            assert_ne!(p2, 0, "HeapAlloc after deserialize must succeed");
+        })
+        .unwrap();
+
+    handle.join().unwrap();
+}

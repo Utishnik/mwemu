@@ -133,17 +133,6 @@ impl HandleManagement {
         key as u32
     }
 
-    pub fn get_mut_heap_handle(&mut self, key: u32) -> Option<&mut HeapHandle> {
-        if let Some(handle_type) = self.handle_types.get_mut(key as usize) {
-            match handle_type {
-                HandleType::HeapHandle(hh) => Some(hh),
-                _ => None,
-            }
-        } else {
-            None
-        }
-    }
-
     pub fn remove_heap_handle(&mut self, key: u32) -> Option<HeapHandle> {
         if let Some(handle_type) = self.handle_types.try_remove(key as usize) {
             match handle_type {
@@ -219,24 +208,5 @@ impl HandleManagement {
             }
         }
         out
-    }
-
-    fn resolve_heap_handle_key(&mut self, handle: u64) -> u32 {
-        if handle == 0 {
-            return self.get_or_insert_process_heap();
-        }
-        if handle > u32::MAX as u64 {
-            return self.get_or_insert_process_heap();
-        }
-        let key = handle as u32;
-        if matches!(
-            self.handle_types.get(key as usize),
-            Some(HandleType::HeapHandle(_))
-        ) {
-            return key;
-        }
-        // Lenient fallback: attribute to the process heap so unknown handles
-        // (e.g. 0x1234 from existing tests) keep recording correctly.
-        self.get_or_insert_process_heap()
     }
 }
