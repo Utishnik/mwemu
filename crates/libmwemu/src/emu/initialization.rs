@@ -1330,25 +1330,9 @@ impl Emu {
             debug_assert_eq!(key, process_key);
         }
 
-        // Populate the _HEAP structure fields after the arena is created
-        // (and the header region reserved) so ntdll!RtlAllocateHeap and
-        // guests that validate the handle (like Enigma) don't crash.
-
-        // +0x10: SegmentSignature
-        self.maps.write_dword(self.heap_addr + 0x10, 0x0DDEEDDEE);
-
-        // +0x138: SegmentList (LIST_ENTRY) — self-referential sentinel so the
-        //         segment walk doesn't chase a NULL pointer.
-        let seg_list = self.heap_addr + 0x138;
-        self.maps.write_qword(seg_list, seg_list); // Flink -> self
-        self.maps.write_qword(seg_list + 8, seg_list); // Blink -> self
-
-        // FreeLists/BlocksIndex pointers
-        self.maps
-            .write_qword(self.heap_addr + 0x3D8, self.heap_addr + 0x400);
-
-        // LockVariable — must be != 0 to avoid [0x10] unmapped deref
-        self.maps
-            .write_qword(self.heap_addr + 0x480, self.heap_addr + 0x500);
+        // Populate the _HEAP structure via Heap64 (see docs/ANTI_EMU_HEAP.md).
+        let heap_struct = structures::Heap64::new(self.heap_addr);
+        let heap_map = self.maps.get_mem_mut(".heap");
+        heap_struct.save(heap_map);
     }
 }

@@ -120,7 +120,7 @@ fn main() -> process::ExitCode {
     let matches = App::new("MWEMU emulator for malware")
         .version(env!("CARGO_PKG_VERSION"))
         .author("@sha0coder")
-        .arg(clap_arg!("filename", "f", "filename", "set the shellcode binary file.", "FILE"))
+        .arg(clap_arg!("filename", "f", "filename", "set the shellcode or binary file.", "FILE"))
         .arg(clap_arg!("dump", "d", "dump", "load from dump.", "FILE"))
         .arg(clap_arg!("verbose", "v", "verbose", "-v syscalls+api calls, -vv assembly, -vvv reps; default shows only syscalls", multiple: true))
         .arg(clap_arg!("verbose_at", "V", "verbose_at", "enable assembly display from position N (-V N) or between positions (-V N-M)", "RANGE"))
