@@ -1312,28 +1312,43 @@ impl Emu {
             .create_map(".heap", self.heap_addr, heap_sz, Permission::READ_WRITE)
             .expect("cannot create heap map");
 
-        // Native ntdll!RtlAllocateHeap expects SegmentSignature at offset 0x10
-        self.maps.write_dword(self.heap_addr + 0x10, 0x0DDEEDDEE);
-
-        // ntdll!RtlAllocateHeap accesses FreeLists/BlocksIndex. If 0, it crashes dereferencing NULL.
-        // We put a self-referential or valid pointer so it doesn't crash on [r10+2].
-        // At 0x5203D8 (rsi+rcx*8+80h) it expects a pointer to something. We point it to 0x520400.
-        self.maps
-            .write_qword(self.heap_addr + 0x3D8, self.heap_addr + 0x400);
-
-        // Later accesses [0x520480] and passes it as locking structure. Needs to be != 0 to avoid [0x10] unmapped array
-        self.maps
-            .write_qword(self.heap_addr + 0x480, self.heap_addr + 0x500);
-
         if self.heap_arenas.is_empty() {
             self.heap_arenas.push(Box::new(
                 O1Heap::new(self.heap_addr, heap_sz as u32)
                     .expect("Expect new heap_management but failed"),
             ));
+
+            // Reserve the first 0x800 bytes for the _HEAP header so the
+            // allocator never hands them out and overwrites the struct fields.
+            self.heap_arenas[0].allocate(0x800);
+
             let heap_handle = HeapHandle::new(0x0, heap_sz as usize, 0, self.heap_arenas.len() - 1);
             let key = self.handle_management.insert_heap_handle(heap_handle);
+            self.handle_management
+                .set_heap_base_addr(key, self.heap_addr);
             let process_key = self.handle_management.get_or_insert_process_heap();
             debug_assert_eq!(key, process_key);
         }
+
+        // Populate the _HEAP structure fields after the arena is created
+        // (and the header region reserved) so ntdll!RtlAllocateHeap and
+        // guests that validate the handle (like Enigma) don't crash.
+
+        // +0x10: SegmentSignature
+        self.maps.write_dword(self.heap_addr + 0x10, 0x0DDEEDDEE);
+
+        // +0x138: SegmentList (LIST_ENTRY) — self-referential sentinel so the
+        //         segment walk doesn't chase a NULL pointer.
+        let seg_list = self.heap_addr + 0x138;
+        self.maps.write_qword(seg_list, seg_list); // Flink -> self
+        self.maps.write_qword(seg_list + 8, seg_list); // Blink -> self
+
+        // FreeLists/BlocksIndex pointers
+        self.maps
+            .write_qword(self.heap_addr + 0x3D8, self.heap_addr + 0x400);
+
+        // LockVariable — must be != 0 to avoid [0x10] unmapped deref
+        self.maps
+            .write_qword(self.heap_addr + 0x480, self.heap_addr + 0x500);
     }
 }

@@ -179,18 +179,73 @@ impl HandleManagement {
         self.process_heap_key == Some(key)
     }
 
-    /// Resolve a guest-supplied heap handle (truncated to u32) to its owning
-    /// `HeapHandle` allocation context: `(arena_idx, maximum_size)`.
-    /// Returns None when the handle is not a live `HeapHandle`.
-    pub fn heap_alloc_context(&self, handle: u64) -> Option<(usize, u64)> {
-        if handle > u32::MAX as u64 {
-            return None;
+    /// Resolve a guest-visible heap handle (base address or legacy slab key)
+    /// to its internal slab key. Tries base_addr lookup first, then falls
+    /// back to direct slab key for backwards compatibility with tests.
+    pub fn resolve_heap_key(&self, handle: u64) -> Option<u32> {
+        if let Some(k) = self.key_for_base_addr(handle) {
+            return Some(k);
         }
-        let key = handle as u32;
+        if handle <= u32::MAX as u64 {
+            let key = handle as u32;
+            if matches!(
+                self.handle_types.get(key as usize),
+                Some(HandleType::HeapHandle(_))
+            ) {
+                return Some(key);
+            }
+        }
+        None
+    }
+
+    /// Resolve a guest-supplied heap handle to its owning `HeapHandle`
+    /// allocation context: `(arena_idx, maximum_size)`.
+    ///
+    /// Tries the value as a slab key first (legacy / test paths that pass
+    /// small ints like `0x1234`), then as a real arena base address (the
+    /// value `GetProcessHeap`/`HeapCreate` hand to the guest).
+    pub fn heap_alloc_context(&self, handle: u64) -> Option<(usize, u64)> {
+        if handle <= u32::MAX as u64 {
+            let key = handle as u32;
+            if let Some(HandleType::HeapHandle(hh)) = self.handle_types.get(key as usize) {
+                return Some((hh.arena, hh.maxSZ as u64));
+            }
+        }
+        let key = self.key_for_base_addr(handle)?;
         if let Some(HandleType::HeapHandle(hh)) = self.handle_types.get(key as usize) {
             Some((hh.arena, hh.maxSZ as u64))
         } else {
             None
+        }
+    }
+
+    /// Resolve a guest-visible heap base address back to its slab key.
+    pub fn key_for_base_addr(&self, addr: u64) -> Option<u32> {
+        if addr == 0 {
+            return None;
+        }
+        for (k, entry) in self.handle_types.iter() {
+            if let HandleType::HeapHandle(hh) = entry {
+                if hh.base_addr == addr {
+                    return Some(k as u32);
+                }
+            }
+        }
+        None
+    }
+
+    /// Record the arena base address on a heap handle after creation.
+    pub fn set_heap_base_addr(&mut self, key: u32, addr: u64) {
+        if let Some(HandleType::HeapHandle(hh)) = self.handle_types.get_mut(key as usize) {
+            hh.base_addr = addr;
+        }
+    }
+
+    /// Return the guest-visible base address for a heap slab key.
+    pub fn heap_base_addr(&self, key: u32) -> Option<u64> {
+        match self.handle_types.get(key as usize) {
+            Some(HandleType::HeapHandle(hh)) if hh.base_addr != 0 => Some(hh.base_addr),
+            _ => None,
         }
     }
 
