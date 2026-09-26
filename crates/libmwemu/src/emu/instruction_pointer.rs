@@ -170,7 +170,19 @@ impl Emu {
             || name == "code"
             || (!map_name.is_empty() && name.starts_with(&map_name))
             || name == "loader.text"*/
-        if addr < constants::LIBS64_MIN {
+        // Non-syscall mode: ntdll is mapped at its original base (below
+        // LIBS64_MIN), but cross-module calls into it should be intercepted
+        // just like high-address libraries.
+        let is_ntdll_cross_call = addr < constants::LIBS64_MIN
+            && !self.cfg.emulate_winapi
+            && self.os.is_windows()
+            && name.starts_with("ntdll")
+            && {
+                let caller_name = self.maps.get_addr_name(self.regs().rip).unwrap_or("??");
+                !caller_name.starts_with("ntdll")
+            };
+
+        if addr < constants::LIBS64_MIN && !is_ntdll_cross_call {
             // This is the normal case, no linux syscall or winapi to handle
             if self.cfg.verbose > 1 {
                 let rip = self.regs().rip;

@@ -234,6 +234,7 @@ pub mod lodsw;
 pub mod r#loop;
 pub mod loope;
 pub mod loopne;
+pub mod lsl;
 pub mod lzcnt;
 pub mod maxpd;
 pub mod maxps;
