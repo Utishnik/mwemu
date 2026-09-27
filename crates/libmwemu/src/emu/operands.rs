@@ -440,27 +440,29 @@ impl Emu {
             };
 
             if self.cfg.trace_mem {
-                let name = self.maps.get_addr_name(mem_addr).unwrap_or("not mapped");
-                let memory_operation = MemoryOperation {
-                    pos: self.pos,
-                    rip: self.regs().rip,
-                    op: "read".to_string(),
-                    bits: sz,
-                    address: mem_addr,
-                    old_value: 0, // not needed for read?
-                    new_value: value.unwrap(),
-                    name: name.to_string(),
-                };
-                self.memory_operations.push(memory_operation);
-                log::trace!(
-                    "\tmem_trace: pos = {} rip = {:x} op = read bits = {} address = 0x{:x} value = 0x{:x} name = '{}'",
-                    self.pos,
-                    self.regs().rip,
-                    sz,
-                    mem_addr,
-                    value.unwrap(),
-                    name
-                );
+                if let Some(val) = value {
+                    let name = self.maps.get_addr_name(mem_addr).unwrap_or("not mapped");
+                    let memory_operation = MemoryOperation {
+                        pos: self.pos,
+                        rip: self.regs().rip,
+                        op: "read".to_string(),
+                        bits: sz,
+                        address: mem_addr,
+                        old_value: 0,
+                        new_value: val,
+                        name: name.to_string(),
+                    };
+                    self.memory_operations.push(memory_operation);
+                    log::trace!(
+                        "\tmem_trace: pos = {} rip = {:x} op = read bits = {} address = 0x{:x} value = 0x{:x} name = '{}'",
+                        self.pos,
+                        self.regs().rip,
+                        sz,
+                        mem_addr,
+                        val,
+                        name
+                    );
+                }
             }
 
             if unlikely(self.bp.is_bp_mem_read(mem_addr)) {

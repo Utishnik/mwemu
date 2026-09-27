@@ -14,6 +14,7 @@ mod shlwapi;
 mod urlmon;
 mod user32;
 mod uxtheme;
+mod version;
 mod wincrt;
 mod winhttp;
 mod wininet;
@@ -79,6 +80,7 @@ pub fn gateway(addr: u64, name: &str, emu: &mut emu::Emu) {
         "uxtheme.text" => uxtheme::gateway(addr, emu),
         "gdi32.text" => gdi32::gateway(addr, emu),
         "ole32.text" => ole32::gateway(addr, emu),
+        "version.text" => version::gateway(addr, emu),
         // `msvcrt.text` is intentionally absent: legacy-CRT calls land on the
         // special-case branch in `Emu::set_rip_with_check`, which executes
         // the real mapped bytes. A future AArch64 msvcrt PE that hits this

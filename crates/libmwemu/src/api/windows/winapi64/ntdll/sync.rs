@@ -1,6 +1,7 @@
 use crate::emu;
 use crate::winapi::winapi64::kernel32::{
-    self, InitializeCriticalSection, TlsAlloc, TlsFree, TlsGetValue, TlsSetValue,
+    self, EnterCriticalSection, InitializeCriticalSection, LeaveCriticalSection, TlsAlloc, TlsFree,
+    TlsGetValue, TlsSetValue,
 };
 use crate::windows::constants;
 
@@ -8,7 +9,9 @@ pub(super) fn dispatch(api: &str, emu: &mut emu::Emu) -> bool {
     match api {
         "RtlInitializeCriticalSection" => InitializeCriticalSection(emu),
         "RtlInitializeCriticalSectionAndSpinCount" => RtlInitializeCriticalSectionAndSpinCount(emu),
-        "RtlEnterCriticalSection" => RtlEnterCriticalSection(emu),
+        "RtlEnterCriticalSection" | "EnterCriticalSection" => EnterCriticalSection(emu),
+        "RtlLeaveCriticalSection" | "LeaveCriticalSection" => LeaveCriticalSection(emu),
+        "RtlDeleteCriticalSection" | "DeleteCriticalSection" => RtlDeleteCriticalSection(emu),
         "RtlInitializeCriticalSectionEx" => RtlInitializeCriticalSectionEx(emu),
         "RtlQueueWorkItem" => RtlQueueWorkItem(emu),
         "NtWaitForSingleObject" => NtWaitForSingleObject(emu),
@@ -33,12 +36,10 @@ fn RtlInitializeCriticalSectionAndSpinCount(emu: &mut emu::Emu) {
     emu.regs_mut().rax = 1;
 }
 
-fn RtlEnterCriticalSection(emu: &mut emu::Emu) {
-    let hndl = emu.regs().rcx;
-
-    log_red!(emu, "ntdll!RtlEnterCriticalSection");
-
-    emu.regs_mut().rax = 1;
+fn RtlDeleteCriticalSection(emu: &mut emu::Emu) {
+    let _cs = emu.regs().rcx;
+    log_red!(emu, "ntdll!RtlDeleteCriticalSection");
+    emu.regs_mut().rax = 0;
 }
 
 fn RtlInitializeCriticalSectionEx(emu: &mut emu::Emu) {

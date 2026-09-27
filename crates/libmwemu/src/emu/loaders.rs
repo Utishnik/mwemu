@@ -253,15 +253,26 @@ impl Emu {
             self.init_win32(clear_registers, clear_flags);
             let (base, _pe_off) = self.load_pe32(filename, true, 0);
             let ep = self.regs().rip;
-            // emulating tls callbacks
-
-            /*
-            for i in 0..self.tls_callbacks.len() {
-                self.regs_mut().rip = self.tls_callbacks[i];
-                log::trace!("emulating tls_callback {} at 0x{:x}", i + 1, self.regs().rip);
-                self.stack_push32(base);
-                self.run(Some(base as u64));
-            }*/
+            // TLS callbacks (stdcall): push Reserved, Reason, hModule, ret-addr
+            if !self.tls_callbacks.is_empty() {
+                let prev_skip = self.cfg.skip_unimplemented;
+                self.cfg.skip_unimplemented = true;
+                for i in 0..self.tls_callbacks.len() {
+                    let cb = self.tls_callbacks[i];
+                    log::trace!("emulating TLS callback {} at 0x{:x}", i + 1, cb);
+                    self.stack_push32(0); // lpvReserved
+                    self.stack_push32(1); // DLL_PROCESS_ATTACH
+                    self.stack_push32(base);
+                    self.stack_push32(base); // return address
+                    self.regs_mut().rip = cb;
+                    if let Err(e) = self.run(Some(base as u64)) {
+                        log::warn!("TLS callback {} at 0x{:x} failed: {}", i + 1, cb, e);
+                        break;
+                    }
+                }
+                self.cfg.skip_unimplemented = prev_skip;
+                self.process_terminated = false;
+            }
 
             // start loading dll
             // For a DLL's entry point, the OS calls DllMain with stdcall:
