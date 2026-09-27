@@ -1,4 +1,4 @@
-# mwemu v1.0 Roadmap
+# libmwemu v1.0 Roadmap
 
 What needs to happen before cutting a stable 1.0 release.
 
