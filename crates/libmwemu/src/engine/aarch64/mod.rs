@@ -69,14 +69,22 @@ pub fn emulate_instruction(emu: &mut Emu, ins: &Instruction) -> bool {
         // --- Branches ---
         Opcode::B => instructions::b::execute(emu, ins),
         Opcode::BL => instructions::bl::execute(emu, ins),
-        Opcode::BR => instructions::br::execute(emu, ins),
-        Opcode::BLR => instructions::blr::execute(emu, ins),
-        Opcode::RET => instructions::ret::execute(emu, ins),
+        Opcode::BR | Opcode::BRAA | Opcode::BRAAZ | Opcode::BRAB | Opcode::BRABZ => {
+            instructions::br::execute(emu, ins)
+        }
+        Opcode::BLR | Opcode::BLRAA | Opcode::BLRAAZ | Opcode::BLRAB | Opcode::BLRABZ => {
+            instructions::blr::execute(emu, ins)
+        }
+        Opcode::RET | Opcode::RETAA | Opcode::RETAB => instructions::ret::execute(emu, ins),
         Opcode::CBZ => instructions::cbz::execute(emu, ins, true),
         Opcode::CBNZ => instructions::cbz::execute(emu, ins, false),
         Opcode::TBZ => instructions::tbz::execute(emu, ins, true),
         Opcode::TBNZ => instructions::tbz::execute(emu, ins, false),
         Opcode::Bcc(cond) => instructions::bcc::execute(emu, ins, cond),
+
+        // --- Conditional compare ---
+        Opcode::CCMP => instructions::ccmp::execute(emu, ins, true),
+        Opcode::CCMN => instructions::ccmp::execute(emu, ins, false),
 
         // --- Conditional select ---
         Opcode::CSEL => instructions::csel::execute(emu, ins),
@@ -88,6 +96,9 @@ pub fn emulate_instruction(emu: &mut Emu, ins: &Instruction) -> bool {
         Opcode::SVC => instructions::svc::execute(emu, ins),
         Opcode::MRS => instructions::mrs::execute(emu, ins),
         Opcode::MSR => instructions::msr::execute(emu, ins),
+        // --- SIMD/NEON ---
+        Opcode::MOVI | Opcode::FMOV => instructions::simd::execute(emu, ins),
+
         Opcode::HINT => true, // NOP is encoded as HINT
         Opcode::DMB(_) | Opcode::DSB(_) | Opcode::ISB => true, // barriers are no-ops in emulation
         Opcode::CLREX => true,

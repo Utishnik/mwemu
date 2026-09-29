@@ -1,4 +1,4 @@
-.PHONY: all tests test-ci clippy clippy-release smoke maps sloppy samples driver
+.PHONY: all tests test-ci clippy clippy-release smoke maps sloppy samples driver test_macos
 
 # Extra Cargo target arguments for cross-target checks. On Apple Silicon, use
 # CARGO_TARGET="--target x86_64-apple-darwin" as required by AGENTS.md.
@@ -115,6 +115,8 @@ test_linux:
 	cargo run --release -- -f /bin/ls -A '"-l"' -6
 test_windows: samples
 	cargo run --release -- -f $(TEST_DIR)/exe64win_enigma.bin -6 --winver win11  -v
+test_macos:
+	cargo run --release $(CARGO_TARGET) -- -f /bin/ls --aarch64 -v
 test_inception:
 	cargo run --release -- -f target/release/mwemu -6 -v
 test_enigma:

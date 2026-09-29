@@ -21,6 +21,10 @@ fn arg(emu: &Emu, idx: usize) -> u64 {
 
 /// Set return value, arch-agnostic.
 /// AArch64: x0, x86_64: rax
+pub(super) fn set_ret_pub(emu: &mut Emu, val: u64) {
+    set_ret(emu, val);
+}
+
 fn set_ret(emu: &mut Emu, val: u64) {
     if emu.cfg.arch.is_aarch64() {
         emu.regs_aarch64_mut().x[0] = val;
@@ -131,9 +135,108 @@ pub fn gateway(symbol: &str, emu: &mut Emu) {
         "_strlcat" | "strlcat" => api_strlcat(emu),
         "_bzero" | "bzero" => api_bzero(emu),
         "_memchr" | "memchr" => api_memchr(emu),
+
+        // --- macOS-specific / ls-required APIs ---
+        "_setlocale" | "setlocale" => api_setlocale(emu),
+        "_getenv" | "getenv" => api_getenv(emu),
+        "_setenv" | "setenv" => api_setenv(emu),
+        "_isatty" | "isatty" => api_isatty(emu),
+        "_ioctl" | "ioctl" => api_ioctl(emu),
+        "_getopt_long" | "getopt_long" => api_getopt_long(emu),
+        "_signal" | "signal" => api_signal(emu),
+        "_kill" | "kill" => api_kill(emu),
+        "_getuid" | "getuid" => api_getuid(emu),
+        "_getpid" | "getpid" => api_getpid(emu),
+        "___error" | "__error" => api___error(emu),
+        "___stack_chk_fail" | "__stack_chk_fail" => api___stack_chk_fail(emu),
+        "___maskrune" | "__maskrune" => api___maskrune(emu),
+        "___tolower" | "__tolower" => api___tolower(emu),
+        "___assert_rtn" | "__assert_rtn" => api___assert_rtn(emu),
+        "_err" | "err" => api_err(emu),
+        "_errx" | "errx" => api_errx(emu),
+        "_warn" | "warn" => api_warn(emu),
+        "_warnx" | "warnx" => api_warnx(emu),
+        "_strerror" | "strerror" => api_strerror(emu),
+        "_fflush" | "fflush" => api_fflush(emu),
+        "___swbuf" | "__swbuf" => api___swbuf(emu),
+        "_fputc" | "fputc" => api_fputc(emu),
+        "_fputs" | "fputs" => api_fputs(emu),
+        "_fwrite" | "fwrite" => api_fwrite(emu),
+        "_ferror" | "ferror" => api_ferror(emu),
+        "_strcoll" | "strcoll" => api_strcoll(emu),
+        "_strtoul" | "strtoul" => api_strtoul(emu),
+        "_time" | "time" => api_time(emu),
+        "_localtime" | "localtime" => api_localtime(emu),
+        "_strftime" | "strftime" => api_strftime(emu),
+        "_readlink" | "readlink" => api_readlink(emu),
+        "_strmode" | "strmode" => api_strmode(emu),
+        "_user_from_uid" | "user_from_uid" => api_user_from_uid(emu),
+        "_group_from_gid" | "group_from_gid" => api_group_from_gid(emu),
+        "_reallocf" | "reallocf" => api_realloc(emu),
+        "_nl_langinfo" | "nl_langinfo" => api_nl_langinfo(emu),
+        "_mbrtowc" | "mbrtowc" => api_mbrtowc(emu),
+        "_wcwidth" | "wcwidth" => api_wcwidth(emu),
+        "_getbsize" | "getbsize" => api_getbsize(emu),
+        "_fflagstostr" | "fflagstostr" => api_fflagstostr(emu),
+        "_compat_mode" | "compat_mode" => api_compat_mode(emu),
+        "_sysctlbyname" | "sysctlbyname" => api_sysctlbyname(emu),
+        "_getxattr" | "getxattr" => api_getxattr(emu),
+        "_listxattr" | "listxattr" => api_listxattr(emu),
+        "_humanize_number" | "humanize_number" => api_humanize_number(emu),
+        "_strtonum" | "strtonum" => api_strtonum(emu),
+        "_uuid_unparse_upper" | "uuid_unparse_upper" => api_uuid_unparse_upper(emu),
+        "_mbr_identifier_translate" | "mbr_identifier_translate" => {
+            api_mbr_identifier_translate(emu)
+        }
+
+        // termcap
+        "_tgetent" | "tgetent" | "_tgetstr" | "tgetstr" | "_tgoto" | "tgoto" | "_tputs"
+        | "tputs" => {
+            log::info!(
+                "{}** {} macOS API {}() -> 0 {}",
+                emu.colors.light_red,
+                emu.pos,
+                symbol,
+                emu.colors.nc
+            );
+            set_ret(emu, 0);
+        }
+
+        // ACL stubs
+        s if s.starts_with("_acl_") || s.starts_with("acl_") => {
+            log::info!(
+                "{}** {} macOS API {}() -> 0 {}",
+                emu.colors.light_red,
+                emu.pos,
+                symbol,
+                emu.colors.nc
+            );
+            set_ret(emu, 0);
+        }
+
+        // FTS filesystem traversal ($INODE64 variants)
+        "_fts_open$INODE64" | "_fts_open" | "fts_open$INODE64" | "fts_open" => api_fts_open(emu),
+        "_fts_read$INODE64" | "_fts_read" | "fts_read$INODE64" | "fts_read" => api_fts_read(emu),
+        "_fts_close$INODE64" | "_fts_close" | "fts_close$INODE64" | "fts_close" => {
+            api_fts_close(emu)
+        }
+        "_fts_set$INODE64" | "_fts_set" | "fts_set$INODE64" | "fts_set" => api_fts_set(emu),
+        "_fts_children$INODE64" | "_fts_children" | "fts_children$INODE64" | "fts_children" => {
+            api_fts_children(emu)
+        }
+
+        // stat family ($INODE64 variants)
+        "_stat$INODE64" | "_stat" | "stat$INODE64" | "stat" | "_stat64" | "stat64" => api_stat(emu),
+        "_lstat$INODE64" | "_lstat" | "lstat$INODE64" | "lstat" | "_lstat64" | "lstat64" => {
+            api_lstat(emu)
+        }
+        "_fstat$INODE64" | "_fstat" | "fstat$INODE64" | "fstat" | "_fstat64" | "fstat64" => {
+            api_fstat(emu)
+        }
+
         _ => {
-            log::warn!("libsystem: unimplemented API {}", symbol);
-            todo!("libSystem API: {}", symbol);
+            log::warn!("libsystem: unimplemented API {} -- returning 0", symbol);
+            set_ret(emu, 0);
         }
     }
 }
@@ -148,6 +251,7 @@ fn api_printf(emu: &mut Emu) {
         fmt,
         emu.colors.nc
     );
+    emu.emulated_stdout.extend_from_slice(fmt.as_bytes());
     set_ret(emu, fmt.len() as u64);
 }
 
@@ -218,23 +322,28 @@ fn api_puts(emu: &mut Emu) {
         s,
         emu.colors.nc
     );
+    emu.emulated_stdout.extend_from_slice(s.as_bytes());
+    emu.emulated_stdout.push(b'\n');
     set_ret(emu, 0);
 }
 
 fn api_putchar(emu: &mut Emu) {
-    let c = arg(emu, 0) as u8 as char;
+    let c = arg(emu, 0) as u8;
     log::info!(
         "{}** {} macOS API putchar('{}') {}",
         emu.colors.light_red,
         emu.pos,
-        c,
+        c as char,
         emu.colors.nc
     );
+    emu.emulated_stdout.push(c);
     set_ret(emu, c as u64);
 }
 
 fn api_exit(emu: &mut Emu) {
     let status = arg(emu, 0);
+    // Flush stdout and stderr buffers before exiting
+    flush_stdio_on_exit(emu);
     log::info!(
         "{}** {} macOS API exit({}) {}",
         emu.colors.light_red,
@@ -243,6 +352,15 @@ fn api_exit(emu: &mut Emu) {
         emu.colors.nc
     );
     emu.stop();
+}
+
+fn flush_stdio_on_exit(emu: &mut Emu) {
+    flush_file_buffer_to_stdout(emu);
+    if !emu.emulated_stdout.is_empty() {
+        let s = String::from_utf8_lossy(&emu.emulated_stdout).to_string();
+        print!("{}", s);
+        emu.emulated_stdout.clear();
+    }
 }
 
 fn api_abort(emu: &mut Emu) {
@@ -919,6 +1037,1190 @@ fn api_madvise(emu: &mut Emu) {
         emu.colors.nc
     );
     set_ret(emu, 0);
+}
+
+// ==================== macOS / ls-required API stubs ====================
+
+fn api_setlocale(emu: &mut Emu) {
+    let category = arg(emu, 0);
+    let locale_addr = arg(emu, 1);
+    let locale = if locale_addr != 0 {
+        emu.maps.read_string(locale_addr)
+    } else {
+        String::new()
+    };
+    log::info!(
+        "{}** {} macOS API setlocale({}, \"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        category,
+        locale,
+        emu.colors.nc
+    );
+    let ret = alloc_string(emu, "C");
+    set_ret(emu, ret);
+}
+
+fn api_getenv(emu: &mut Emu) {
+    let name_addr = arg(emu, 0);
+    let name = emu.maps.read_string(name_addr);
+    log::info!(
+        "{}** {} macOS API getenv(\"{}\") -> NULL {}",
+        emu.colors.light_red,
+        emu.pos,
+        name,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_setenv(emu: &mut Emu) {
+    let name_addr = arg(emu, 0);
+    let val_addr = arg(emu, 1);
+    let name = emu.maps.read_string(name_addr);
+    let val = if val_addr != 0 {
+        emu.maps.read_string(val_addr)
+    } else {
+        String::new()
+    };
+    log::info!(
+        "{}** {} macOS API setenv(\"{}\", \"{}\") -> 0 {}",
+        emu.colors.light_red,
+        emu.pos,
+        name,
+        val,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_isatty(emu: &mut Emu) {
+    let fd = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API isatty({}) -> 0 {}",
+        emu.colors.light_red,
+        emu.pos,
+        fd,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_ioctl(emu: &mut Emu) {
+    let fd = arg(emu, 0);
+    let request = arg(emu, 1);
+    log::info!(
+        "{}** {} macOS API ioctl({}, 0x{:x}) -> -1 {}",
+        emu.colors.light_red,
+        emu.pos,
+        fd,
+        request,
+        emu.colors.nc
+    );
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_getopt_long(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API getopt_long() -> -1 (no options) {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_signal(emu: &mut Emu) {
+    let sig = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API signal({}) -> SIG_DFL {}",
+        emu.colors.light_red,
+        emu.pos,
+        sig,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_kill(emu: &mut Emu) {
+    let pid = arg(emu, 0);
+    let sig = arg(emu, 1);
+    log::info!(
+        "{}** {} macOS API kill({}, {}) -> 0 {}",
+        emu.colors.light_red,
+        emu.pos,
+        pid,
+        sig,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_getuid(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API getuid() -> 501 {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    set_ret(emu, 501);
+}
+
+fn api_getpid(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API getpid() -> 1234 {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    set_ret(emu, 1234);
+}
+
+fn api___error(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API __error() {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    let errno_ptr = alloc_string(emu, "\0\0\0\0");
+    set_ret(emu, errno_ptr);
+}
+
+fn api___stack_chk_fail(emu: &mut Emu) {
+    log::error!(
+        "{}** {} macOS API __stack_chk_fail() — stack smash detected {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    emu.stop();
+}
+
+fn api___maskrune(emu: &mut Emu) {
+    let _c = arg(emu, 0);
+    let _mask = arg(emu, 1);
+    set_ret(emu, 0);
+}
+
+fn api___tolower(emu: &mut Emu) {
+    let c = arg(emu, 0) as u8;
+    let lower = if c.is_ascii_uppercase() {
+        c.to_ascii_lowercase()
+    } else {
+        c
+    };
+    set_ret(emu, lower as u64);
+}
+
+fn api___assert_rtn(emu: &mut Emu) {
+    let func_addr = arg(emu, 0);
+    let file_addr = arg(emu, 1);
+    let line = arg(emu, 2);
+    let expr_addr = arg(emu, 3);
+    let func = emu.maps.read_string(func_addr);
+    let file = emu.maps.read_string(file_addr);
+    let expr = emu.maps.read_string(expr_addr);
+    log::error!(
+        "{}** {} macOS API __assert_rtn(\"{}\", \"{}\", {}, \"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        func,
+        file,
+        line,
+        expr,
+        emu.colors.nc
+    );
+    emu.stop();
+}
+
+fn api_err(emu: &mut Emu) {
+    let eval = arg(emu, 0);
+    let fmt_addr = arg(emu, 1);
+    let fmt = emu.maps.read_string(fmt_addr);
+    log::error!(
+        "{}** {} macOS API err({}, \"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        eval,
+        fmt,
+        emu.colors.nc
+    );
+    emu.stop();
+}
+
+fn api_errx(emu: &mut Emu) {
+    let eval = arg(emu, 0);
+    let fmt_addr = arg(emu, 1);
+    let fmt = emu.maps.read_string(fmt_addr);
+    log::error!(
+        "{}** {} macOS API errx({}, \"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        eval,
+        fmt,
+        emu.colors.nc
+    );
+    emu.stop();
+}
+
+fn api_warn(emu: &mut Emu) {
+    let fmt_addr = arg(emu, 0);
+    let fmt = emu.maps.read_string(fmt_addr);
+    log::warn!(
+        "{}** {} macOS API warn(\"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        fmt,
+        emu.colors.nc
+    );
+}
+
+fn api_warnx(emu: &mut Emu) {
+    let fmt_addr = arg(emu, 0);
+    let fmt = emu.maps.read_string(fmt_addr);
+    log::warn!(
+        "{}** {} macOS API warnx(\"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        fmt,
+        emu.colors.nc
+    );
+}
+
+fn api_strerror(emu: &mut Emu) {
+    let errnum = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API strerror({}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        errnum,
+        emu.colors.nc
+    );
+    let ret = alloc_string(emu, "Unknown error");
+    set_ret(emu, ret);
+}
+
+fn api_fflush(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API fflush() -> 0 {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    // Drain any data that the inline putc macro wrote into the FILE buffer
+    flush_file_buffer_to_stdout(emu);
+    // Print and clear the buffered emulated output
+    if !emu.emulated_stdout.is_empty() {
+        let s = String::from_utf8_lossy(&emu.emulated_stdout).to_string();
+        print!("{}", s);
+        emu.emulated_stdout.clear();
+    }
+    set_ret(emu, 0);
+}
+
+fn flush_file_buffer_to_stdout(emu: &mut Emu) {
+    if let Some(ref macho) = emu.macho64 {
+        let stdoutp_addr = macho
+            .addr_to_symbol
+            .iter()
+            .find(|(_, s)| s.as_str() == "___stdoutp")
+            .map(|(a, _)| *a);
+        if let Some(addr) = stdoutp_addr
+            && let Some(fp) = emu.maps.read_qword(addr)
+            && fp != 0
+        {
+            let p = emu.maps.read_qword(fp).unwrap_or(0);
+            let base = emu.maps.read_qword(fp + 24).unwrap_or(0);
+            let buf_size = emu.maps.read_dword(fp + 32).unwrap_or(0) as u64;
+            if base != 0 && p > base {
+                let count = p - base;
+                for i in 0..count {
+                    if let Some(b) = emu.maps.read_byte(base + i) {
+                        emu.emulated_stdout.push(b);
+                    }
+                }
+                emu.maps.write_qword(fp, base);
+                emu.maps.write_dword(fp + 12, buf_size as u32);
+            }
+        }
+    }
+}
+
+fn api___swbuf(emu: &mut Emu) {
+    let c = arg(emu, 0) as u8;
+    let fp = arg(emu, 1);
+    // Drain any data in the FILE buffer, then write the new char
+    flush_file_buffer_to_stdout(emu);
+    if fp != 0 {
+        let base = emu.maps.read_qword(fp + 24).unwrap_or(0);
+        if base != 0 {
+            emu.maps.write_byte(base, c);
+            emu.maps.write_qword(fp, base + 1);
+            let buf_size = emu.maps.read_dword(fp + 32).unwrap_or(0);
+            emu.maps.write_dword(fp + 12, buf_size.saturating_sub(1));
+        }
+    }
+    set_ret(emu, c as u64);
+}
+
+fn api_fputc(emu: &mut Emu) {
+    let c = arg(emu, 0) as u8;
+    log::info!(
+        "{}** {} macOS API fputc('{}') {}",
+        emu.colors.light_red,
+        emu.pos,
+        c as char,
+        emu.colors.nc
+    );
+    emu.emulated_stdout.push(c);
+    set_ret(emu, c as u64);
+}
+
+fn api_fputs(emu: &mut Emu) {
+    let s_addr = arg(emu, 0);
+    let s = emu.maps.read_string(s_addr);
+    log::info!(
+        "{}** {} macOS API fputs(\"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        s,
+        emu.colors.nc
+    );
+    emu.emulated_stdout.extend_from_slice(s.as_bytes());
+    set_ret(emu, 0);
+}
+
+fn api_fwrite(emu: &mut Emu) {
+    let buf = arg(emu, 0);
+    let size = arg(emu, 1);
+    let nmemb = arg(emu, 2);
+    let total = size.saturating_mul(nmemb);
+    let mut data = Vec::with_capacity(total as usize);
+    for i in 0..total {
+        match emu.maps.read_byte(buf + i) {
+            Some(b) => data.push(b),
+            None => break,
+        }
+    }
+    let s = String::from_utf8_lossy(&data);
+    log::info!(
+        "{}** {} macOS API fwrite(\"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        s,
+        emu.colors.nc
+    );
+    emu.emulated_stdout.extend_from_slice(&data);
+    set_ret(emu, nmemb);
+}
+
+fn api_ferror(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API ferror() -> 0 {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_strcoll(emu: &mut Emu) {
+    let s1_addr = arg(emu, 0);
+    let s2_addr = arg(emu, 1);
+    let s1 = emu.maps.read_string(s1_addr);
+    let s2 = emu.maps.read_string(s2_addr);
+    let result = match s1.cmp(&s2) {
+        std::cmp::Ordering::Less => -1i64 as u64,
+        std::cmp::Ordering::Equal => 0u64,
+        std::cmp::Ordering::Greater => 1u64,
+    };
+    set_ret(emu, result);
+}
+
+fn api_strtoul(emu: &mut Emu) {
+    let s_addr = arg(emu, 0);
+    let _endptr = arg(emu, 1);
+    let base = arg(emu, 2) as u32;
+    let s = emu.maps.read_string(s_addr);
+    log::info!(
+        "{}** {} macOS API strtoul(\"{}\", _, {}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        s,
+        base,
+        emu.colors.nc
+    );
+    let val = u64::from_str_radix(s.trim(), if base == 0 { 10 } else { base });
+    set_ret(emu, val.unwrap_or(0));
+}
+
+fn api_time(emu: &mut Emu) {
+    let tloc = arg(emu, 0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    log::info!(
+        "{}** {} macOS API time() -> {} {}",
+        emu.colors.light_red,
+        emu.pos,
+        now,
+        emu.colors.nc
+    );
+    if tloc != 0 {
+        emu.maps.write_qword(tloc, now);
+    }
+    set_ret(emu, now);
+}
+
+fn api_localtime(emu: &mut Emu) {
+    let _timep = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API localtime() {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    // Allocate a fake struct tm (at least 56 bytes on macOS)
+    let tm = allocate_memory(emu, 64).expect("localtime: alloc");
+    // tm_sec=0, tm_min=0, tm_hour=12, tm_mday=1, tm_mon=0, tm_year=125 (2025),
+    // tm_wday=3, tm_yday=0, tm_isdst=0
+    emu.maps.write_dword(tm, 0); // tm_sec
+    emu.maps.write_dword(tm + 4, 0); // tm_min
+    emu.maps.write_dword(tm + 8, 12); // tm_hour
+    emu.maps.write_dword(tm + 12, 1); // tm_mday
+    emu.maps.write_dword(tm + 16, 0); // tm_mon
+    emu.maps.write_dword(tm + 20, 125); // tm_year (2025-1900)
+    emu.maps.write_dword(tm + 24, 3); // tm_wday
+    emu.maps.write_dword(tm + 28, 0); // tm_yday
+    emu.maps.write_dword(tm + 32, 0); // tm_isdst
+    set_ret(emu, tm);
+}
+
+fn api_strftime(emu: &mut Emu) {
+    let dst = arg(emu, 0);
+    let maxsize = arg(emu, 1);
+    let fmt_addr = arg(emu, 2);
+    let fmt = emu.maps.read_string(fmt_addr);
+    log::info!(
+        "{}** {} macOS API strftime(_, {}, \"{}\") {}",
+        emu.colors.light_red,
+        emu.pos,
+        maxsize,
+        fmt,
+        emu.colors.nc
+    );
+    let result = "Jan  1 12:00";
+    let bytes = result.as_bytes();
+    let write_len = std::cmp::min(bytes.len(), (maxsize.saturating_sub(1)) as usize);
+    emu.maps.write_bytes(dst, &bytes[..write_len]);
+    emu.maps.write_byte(dst + write_len as u64, 0);
+    set_ret(emu, write_len as u64);
+}
+
+fn api_readlink(emu: &mut Emu) {
+    let path_addr = arg(emu, 0);
+    let path = emu.maps.read_string(path_addr);
+    log::info!(
+        "{}** {} macOS API readlink(\"{}\") -> -1 {}",
+        emu.colors.light_red,
+        emu.pos,
+        path,
+        emu.colors.nc
+    );
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_strmode(emu: &mut Emu) {
+    let mode = arg(emu, 0) as u32;
+    let buf = arg(emu, 1);
+    log::info!(
+        "{}** {} macOS API strmode(0o{:o}, 0x{:x}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        mode,
+        buf,
+        emu.colors.nc
+    );
+    let mut s = [b'-'; 12];
+    // File type
+    s[0] = match mode & 0o170000 {
+        0o040000 => b'd',
+        0o120000 => b'l',
+        0o010000 => b'p',
+        0o060000 => b'b',
+        0o020000 => b'c',
+        0o140000 => b's',
+        _ => b'-',
+    };
+    // Owner
+    if mode & 0o400 != 0 {
+        s[1] = b'r';
+    }
+    if mode & 0o200 != 0 {
+        s[2] = b'w';
+    }
+    if mode & 0o100 != 0 {
+        s[3] = if mode & 0o4000 != 0 { b's' } else { b'x' };
+    } else if mode & 0o4000 != 0 {
+        s[3] = b'S';
+    }
+    // Group
+    if mode & 0o040 != 0 {
+        s[4] = b'r';
+    }
+    if mode & 0o020 != 0 {
+        s[5] = b'w';
+    }
+    if mode & 0o010 != 0 {
+        s[6] = if mode & 0o2000 != 0 { b's' } else { b'x' };
+    } else if mode & 0o2000 != 0 {
+        s[6] = b'S';
+    }
+    // Other
+    if mode & 0o004 != 0 {
+        s[7] = b'r';
+    }
+    if mode & 0o002 != 0 {
+        s[8] = b'w';
+    }
+    if mode & 0o001 != 0 {
+        s[9] = if mode & 0o1000 != 0 { b't' } else { b'x' };
+    } else if mode & 0o1000 != 0 {
+        s[9] = b'T';
+    }
+    s[10] = b' ';
+    s[11] = 0;
+    emu.maps.write_bytes(buf, &s);
+}
+
+fn api_user_from_uid(emu: &mut Emu) {
+    let uid = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API user_from_uid({}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        uid,
+        emu.colors.nc
+    );
+    let ret = alloc_string(emu, "user");
+    set_ret(emu, ret);
+}
+
+fn api_group_from_gid(emu: &mut Emu) {
+    let gid = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API group_from_gid({}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        gid,
+        emu.colors.nc
+    );
+    let ret = alloc_string(emu, "staff");
+    set_ret(emu, ret);
+}
+
+fn api_nl_langinfo(emu: &mut Emu) {
+    let item = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API nl_langinfo({}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        item,
+        emu.colors.nc
+    );
+    let ret = alloc_string(emu, "UTF-8");
+    set_ret(emu, ret);
+}
+
+fn api_mbrtowc(emu: &mut Emu) {
+    let _pwc = arg(emu, 0);
+    let s = arg(emu, 1);
+    let _n = arg(emu, 2);
+    if s == 0 {
+        set_ret(emu, 0);
+        return;
+    }
+    let b = emu.maps.read_byte(s).unwrap_or(0);
+    if _pwc != 0 {
+        emu.maps.write_dword(_pwc, b as u32);
+    }
+    set_ret(emu, if b == 0 { 0 } else { 1 });
+}
+
+fn api_wcwidth(emu: &mut Emu) {
+    let _wc = arg(emu, 0);
+    set_ret(emu, 1);
+}
+
+fn api_getbsize(emu: &mut Emu) {
+    let headerlenp = arg(emu, 0);
+    let blocksizep = arg(emu, 1);
+    log::info!(
+        "{}** {} macOS API getbsize() {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    if headerlenp != 0 {
+        emu.maps.write_dword(headerlenp, 0);
+    }
+    if blocksizep != 0 {
+        emu.maps.write_qword(blocksizep, 512);
+    }
+    let ret = alloc_string(emu, "512");
+    set_ret(emu, ret);
+}
+
+fn api_fflagstostr(emu: &mut Emu) {
+    let _flags = arg(emu, 0);
+    let ret = alloc_string(emu, "");
+    set_ret(emu, ret);
+}
+
+fn api_compat_mode(emu: &mut Emu) {
+    log::info!(
+        "{}** {} macOS API compat_mode() -> NULL {}",
+        emu.colors.light_red,
+        emu.pos,
+        emu.colors.nc
+    );
+    set_ret(emu, 0);
+}
+
+fn api_sysctlbyname(emu: &mut Emu) {
+    let name_addr = arg(emu, 0);
+    let name = emu.maps.read_string(name_addr);
+    log::info!(
+        "{}** {} macOS API sysctlbyname(\"{}\") -> -1 {}",
+        emu.colors.light_red,
+        emu.pos,
+        name,
+        emu.colors.nc
+    );
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_getxattr(emu: &mut Emu) {
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_listxattr(emu: &mut Emu) {
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_humanize_number(emu: &mut Emu) {
+    set_ret(emu, -1i64 as u64);
+}
+
+fn api_strtonum(emu: &mut Emu) {
+    let s_addr = arg(emu, 0);
+    let s = emu.maps.read_string(s_addr);
+    let val: i64 = s.trim().parse().unwrap_or(0);
+    set_ret(emu, val as u64);
+}
+
+fn api_uuid_unparse_upper(emu: &mut Emu) {
+    let _uu = arg(emu, 0);
+    let out = arg(emu, 1);
+    let fake = "00000000-0000-0000-0000-000000000000";
+    let bytes = fake.as_bytes();
+    emu.maps.write_bytes(out, bytes);
+    emu.maps.write_byte(out + bytes.len() as u64, 0);
+}
+
+fn api_mbr_identifier_translate(emu: &mut Emu) {
+    set_ret(emu, -1i64 as u64);
+}
+
+// ==================== FTS (filesystem traversal) ====================
+
+fn api_fts_open(emu: &mut Emu) {
+    let argv_addr = arg(emu, 0);
+    let options = arg(emu, 1);
+
+    // Read the path list from argv (array of char* pointers, NULL-terminated)
+    let mut paths: Vec<String> = Vec::new();
+    let mut ptr_addr = argv_addr;
+    loop {
+        let p = emu.maps.read_qword(ptr_addr).unwrap_or(0);
+        if p == 0 {
+            break;
+        }
+        paths.push(emu.maps.read_string(p));
+        ptr_addr += 8;
+    }
+    if paths.is_empty() {
+        paths.push(".".to_string());
+    }
+
+    log::info!(
+        "{}** {} macOS API fts_open({:?}, options=0x{:x}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        paths,
+        options,
+        emu.colors.nc
+    );
+
+    // Read the real host filesystem and collect entries
+    let mut entries: Vec<FtsEntry> = Vec::new();
+    for path in &paths {
+        let p = std::path::Path::new(path);
+        if let Ok(meta) = p.symlink_metadata() {
+            entries.push(FtsEntry::from_metadata(path.clone(), &meta, true));
+        }
+        if p.is_dir()
+            && let Ok(rd) = std::fs::read_dir(p)
+        {
+            for de in rd.flatten() {
+                let name = de.file_name().to_string_lossy().to_string();
+                let full = format!("{}/{}", path.trim_end_matches('/'), name);
+                if let Ok(meta) = de.metadata() {
+                    entries.push(FtsEntry::from_metadata(full, &meta, false));
+                }
+            }
+        }
+    }
+
+    // Allocate a fake FTS handle (just a small block to serve as an opaque pointer)
+    let handle = allocate_memory(emu, 64).expect("fts_open: alloc");
+
+    // Store state in the emulator's auxiliary map
+    let state = FtsState {
+        entries,
+        index: 0,
+        last_ftsent: 0,
+        children_returned: false,
+        options,
+    };
+    emu.fts_handles.insert(handle, state);
+
+    log::info!("  -> handle 0x{:x}", handle);
+    set_ret(emu, handle);
+}
+
+fn api_fts_read(emu: &mut Emu) {
+    let handle = arg(emu, 0);
+
+    let state = match emu.fts_handles.get_mut(&handle) {
+        Some(s) => s,
+        None => {
+            log::warn!("fts_read: invalid handle 0x{:x}", handle);
+            set_ret(emu, 0);
+            return;
+        }
+    };
+
+    // If fts_children was already called (prescan), the root directory was
+    // already consumed.  Skip it so the binary's FTS_D handler doesn't
+    // re-display the same entries.
+    if state.children_returned {
+        log::info!(
+            "{}** {} macOS API fts_read(0x{:x}) -> NULL (end) {}",
+            emu.colors.light_red,
+            emu.pos,
+            handle,
+            emu.colors.nc
+        );
+        set_ret(emu, 0);
+        return;
+    }
+
+    // Find the next root entry (skip children — those are returned by fts_children)
+    while state.index < state.entries.len() && !state.entries[state.index].is_root {
+        state.index += 1;
+    }
+
+    if state.index >= state.entries.len() {
+        log::info!(
+            "{}** {} macOS API fts_read(0x{:x}) -> NULL (end) {}",
+            emu.colors.light_red,
+            emu.pos,
+            handle,
+            emu.colors.nc
+        );
+        set_ret(emu, 0);
+        return;
+    }
+
+    let entry = state.entries[state.index].clone();
+    state.index += 1;
+
+    log::info!(
+        "{}** {} macOS API fts_read(0x{:x}) -> \"{}\" {}",
+        emu.colors.light_red,
+        emu.pos,
+        handle,
+        entry.path,
+        emu.colors.nc
+    );
+
+    let ftsent_addr = write_ftsent(emu, &entry);
+    emu.fts_handles.get_mut(&handle).unwrap().last_ftsent = ftsent_addr;
+    set_ret(emu, ftsent_addr);
+}
+
+fn api_fts_close(emu: &mut Emu) {
+    let handle = arg(emu, 0);
+    log::info!(
+        "{}** {} macOS API fts_close(0x{:x}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        handle,
+        emu.colors.nc
+    );
+    emu.fts_handles.remove(&handle);
+    set_ret(emu, 0);
+}
+
+fn api_fts_set(emu: &mut Emu) {
+    set_ret(emu, 0);
+}
+
+fn api_fts_children(emu: &mut Emu) {
+    let handle = arg(emu, 0);
+    let state = match emu.fts_handles.get_mut(&handle) {
+        Some(s) => s,
+        None => {
+            set_ret(emu, 0);
+            return;
+        }
+    };
+
+    if state.children_returned {
+        log::info!(
+            "{}** {} macOS API fts_children(0x{:x}) -> NULL (already returned) {}",
+            emu.colors.light_red,
+            emu.pos,
+            handle,
+            emu.colors.nc
+        );
+        set_ret(emu, 0);
+        return;
+    }
+
+    let nostat = state.options & FTS_NOSTAT != 0;
+    let mut children: Vec<FtsEntry> = state
+        .entries
+        .iter()
+        .filter(|e| !e.is_root)
+        .cloned()
+        .collect();
+
+    if nostat {
+        for child in &mut children {
+            child.fts_info = FTS_NSOK;
+        }
+    }
+
+    state.children_returned = true;
+
+    if children.is_empty() {
+        set_ret(emu, 0);
+        return;
+    }
+
+    // Build linked list of FTSENT structs via fts_link field
+    let mut addrs: Vec<u64> = Vec::with_capacity(children.len());
+    for child in &children {
+        addrs.push(write_ftsent(emu, child));
+    }
+    for i in 0..addrs.len() - 1 {
+        emu.maps
+            .write_qword(addrs[i] + FTSENT_FTS_LINK, addrs[i + 1]);
+    }
+
+    log::info!(
+        "{}** {} macOS API fts_children(0x{:x}) -> {} entries {}",
+        emu.colors.light_red,
+        emu.pos,
+        handle,
+        children.len(),
+        emu.colors.nc
+    );
+    set_ret(emu, addrs[0]);
+}
+
+// macOS FTSENT offsets (arm64, from <fts.h>):
+const FTSENT_FTS_CYCLE: u64 = 0x00; // *fts_cycle
+const FTSENT_FTS_PARENT: u64 = 0x08; // *fts_parent
+const FTSENT_FTS_LINK: u64 = 0x10; // *fts_link
+const FTSENT_FTS_NUMBER: u64 = 0x18; // fts_number (int64)
+const FTSENT_FTS_POINTER: u64 = 0x20; // *fts_pointer
+const FTSENT_FTS_ACCPATH: u64 = 0x28; // *fts_accpath
+const FTSENT_FTS_PATH: u64 = 0x30; // *fts_path
+const FTSENT_FTS_ERRNO: u64 = 0x38; // fts_errno (int)
+const FTSENT_FTS_SYMFD: u64 = 0x3c; // fts_symfd (int)
+const FTSENT_FTS_PATHLEN: u64 = 0x40; // fts_pathlen (u_short)
+const FTSENT_FTS_NAMELEN: u64 = 0x42; // fts_namelen (u_short)
+const FTSENT_FTS_INO: u64 = 0x48; // fts_ino (ino_t, u64)
+const FTSENT_FTS_DEV: u64 = 0x50; // fts_dev (dev_t, i32)
+const FTSENT_FTS_NLINK: u64 = 0x54; // fts_nlink (nlink_t, u16)
+const FTSENT_FTS_LEVEL: u64 = 0x56; // fts_level (short)
+const FTSENT_FTS_INFO: u64 = 0x58; // fts_info (u_short)
+const FTSENT_FTS_FLAGS: u64 = 0x5a; // fts_flags (u_short)
+const FTSENT_FTS_STATP: u64 = 0x60; // *fts_statp
+const FTSENT_FTS_NAME: u64 = 0x68; // fts_name[1] (flexible array)
+
+const FTS_D: u16 = 1; // directory (pre-order)
+const FTS_F: u16 = 8; // regular file
+const FTS_SL: u16 = 12; // symbolic link
+const FTS_DP: u16 = 6; // directory (post-order) — we skip these
+const FTS_NSOK: u16 = 11; // no stat requested (FTS_NOSTAT)
+const FTS_NOSTAT: u64 = 0x08; // fts_open option: don't stat entries
+
+fn write_ftsent(emu: &mut Emu, entry: &FtsEntry) -> u64 {
+    let name_bytes = entry.name.as_bytes();
+    let path_bytes = entry.path.as_bytes();
+    let ftsent_size = FTSENT_FTS_NAME + (name_bytes.len() as u64) + 1;
+    let ftsent = allocate_memory(emu, ftsent_size + 256).expect("ftsent: alloc");
+
+    // Zero-fill
+    for i in 0..ftsent_size {
+        emu.maps.write_byte(ftsent + i, 0);
+    }
+
+    // Write name at the end (fts_name field)
+    emu.maps.write_bytes(ftsent + FTSENT_FTS_NAME, name_bytes);
+    emu.maps
+        .write_byte(ftsent + FTSENT_FTS_NAME + name_bytes.len() as u64, 0);
+
+    // Allocate and write path string
+    let path_addr = allocate_memory(emu, (path_bytes.len() + 1) as u64).expect("path: alloc");
+    emu.maps.write_bytes(path_addr, path_bytes);
+    emu.maps.write_byte(path_addr + path_bytes.len() as u64, 0);
+
+    // fts_accpath and fts_path both point to the path
+    emu.maps.write_qword(ftsent + FTSENT_FTS_ACCPATH, path_addr);
+    emu.maps.write_qword(ftsent + FTSENT_FTS_PATH, path_addr);
+
+    // Lengths
+    emu.maps
+        .write_word(ftsent + FTSENT_FTS_PATHLEN, path_bytes.len() as u16);
+    emu.maps
+        .write_word(ftsent + FTSENT_FTS_NAMELEN, name_bytes.len() as u16);
+
+    // File info
+    emu.maps
+        .write_word(ftsent + FTSENT_FTS_INFO, entry.fts_info);
+    emu.maps.write_qword(ftsent + FTSENT_FTS_INO, entry.ino);
+    emu.maps
+        .write_dword(ftsent + FTSENT_FTS_DEV, entry.dev as u32);
+    emu.maps
+        .write_word(ftsent + FTSENT_FTS_NLINK, entry.nlink as u16);
+    emu.maps
+        .write_word(ftsent + FTSENT_FTS_LEVEL, if entry.is_root { 0 } else { 1 });
+
+    // Write stat struct and set fts_statp
+    let stat_addr = write_stat_struct(emu, &entry.stat);
+    emu.maps.write_qword(ftsent + FTSENT_FTS_STATP, stat_addr);
+
+    ftsent
+}
+
+// ==================== stat ====================
+
+fn api_stat(emu: &mut Emu) {
+    let path_addr = arg(emu, 0);
+    let buf = arg(emu, 1);
+    let path = emu.maps.read_string(path_addr);
+    log::info!(
+        "{}** {} macOS API stat(\"{}\", 0x{:x}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        path,
+        buf,
+        emu.colors.nc
+    );
+    match std::fs::metadata(&path) {
+        Ok(meta) => {
+            let st = StatData::from_metadata(&meta);
+            write_stat_at(emu, buf, &st);
+            set_ret(emu, 0);
+        }
+        Err(_) => set_ret(emu, -1i64 as u64),
+    }
+}
+
+fn api_lstat(emu: &mut Emu) {
+    let path_addr = arg(emu, 0);
+    let buf = arg(emu, 1);
+    let path = emu.maps.read_string(path_addr);
+    log::info!(
+        "{}** {} macOS API lstat(\"{}\", 0x{:x}) {}",
+        emu.colors.light_red,
+        emu.pos,
+        path,
+        buf,
+        emu.colors.nc
+    );
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) => {
+            let st = StatData::from_metadata(&meta);
+            write_stat_at(emu, buf, &st);
+            set_ret(emu, 0);
+        }
+        Err(_) => set_ret(emu, -1i64 as u64),
+    }
+}
+
+fn api_fstat(emu: &mut Emu) {
+    let fd = arg(emu, 0);
+    let buf = arg(emu, 1);
+    log::info!(
+        "{}** {} macOS API fstat({}, 0x{:x}) -> 0 {}",
+        emu.colors.light_red,
+        emu.pos,
+        fd,
+        buf,
+        emu.colors.nc
+    );
+    let st = StatData::default();
+    write_stat_at(emu, buf, &st);
+    set_ret(emu, 0);
+}
+
+// ==================== Helpers ====================
+
+fn alloc_string(emu: &mut Emu, s: &str) -> u64 {
+    let len = s.len() as u64 + 1;
+    let addr = allocate_memory(emu, len).expect("alloc_string: out of memory");
+    emu.maps.write_bytes(addr, s.as_bytes());
+    emu.maps.write_byte(addr + s.len() as u64, 0);
+    addr
+}
+
+#[derive(Clone)]
+struct FtsEntry {
+    name: String,
+    path: String,
+    fts_info: u16,
+    ino: u64,
+    dev: u64,
+    nlink: u64,
+    is_root: bool,
+    stat: StatData,
+}
+
+impl FtsEntry {
+    fn from_metadata(path: String, meta: &std::fs::Metadata, is_root: bool) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        let name = std::path::Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+        let fts_info = if meta.is_dir() {
+            FTS_D
+        } else if meta.file_type().is_symlink() {
+            FTS_SL
+        } else {
+            FTS_F
+        };
+        FtsEntry {
+            name,
+            path,
+            fts_info,
+            ino: meta.ino(),
+            dev: meta.dev(),
+            nlink: meta.nlink(),
+            is_root,
+            stat: StatData::from_metadata(meta),
+        }
+    }
+}
+
+pub struct FtsState {
+    entries: Vec<FtsEntry>,
+    index: usize,
+    last_ftsent: u64,
+    children_returned: bool,
+    options: u64,
+}
+
+#[derive(Clone, Default)]
+struct StatData {
+    dev: u32,
+    mode: u16,
+    nlink: u16,
+    ino: u64,
+    uid: u32,
+    gid: u32,
+    rdev: u32,
+    size: u64,
+    blocks: u64,
+    blksize: u32,
+    atime: u64,
+    mtime: u64,
+    ctime: u64,
+}
+
+impl StatData {
+    fn from_metadata(meta: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        StatData {
+            dev: meta.dev() as u32,
+            mode: meta.mode() as u16,
+            nlink: meta.nlink() as u16,
+            ino: meta.ino(),
+            uid: meta.uid(),
+            gid: meta.gid(),
+            rdev: meta.rdev() as u32,
+            size: meta.size(),
+            blocks: meta.blocks(),
+            blksize: meta.blksize() as u32,
+            atime: meta.atime() as u64,
+            mtime: meta.mtime() as u64,
+            ctime: meta.ctime() as u64,
+        }
+    }
+}
+
+// macOS arm64 struct stat layout (from <sys/stat.h>):
+// off 0x00: st_dev (dev_t = i32)
+// off 0x04: st_mode (mode_t = u16)
+// off 0x06: st_nlink (nlink_t = u16)
+// off 0x08: st_ino (ino_t = u64)
+// off 0x10: st_uid (uid_t = u32)
+// off 0x14: st_gid (gid_t = u32)
+// off 0x18: st_rdev (dev_t = i32)
+// off 0x20: st_atimespec (16 bytes: tv_sec i64 + tv_nsec i64)
+// off 0x30: st_mtimespec (16 bytes)
+// off 0x40: st_ctimespec (16 bytes)
+// off 0x50: st_birthtimespec (16 bytes)
+// off 0x60: st_size (off_t = i64)
+// off 0x68: st_blocks (blkcnt_t = i64)
+// off 0x70: st_blksize (blksize_t = i32)
+// off 0x74: st_flags (u32)
+// off 0x78: st_gen (u32)
+// total ~0x90 bytes
+const STAT_SIZE: u64 = 0x90;
+
+fn write_stat_struct(emu: &mut Emu, st: &StatData) -> u64 {
+    let addr = allocate_memory(emu, STAT_SIZE).expect("stat: alloc");
+    write_stat_at(emu, addr, st);
+    addr
+}
+
+fn write_stat_at(emu: &mut Emu, addr: u64, st: &StatData) {
+    // Zero-fill first
+    for i in 0..STAT_SIZE {
+        emu.maps.write_byte(addr + i, 0);
+    }
+    emu.maps.write_dword(addr, st.dev);
+    emu.maps.write_word(addr + 0x04, st.mode);
+    emu.maps.write_word(addr + 0x06, st.nlink);
+    emu.maps.write_qword(addr + 0x08, st.ino);
+    emu.maps.write_dword(addr + 0x10, st.uid);
+    emu.maps.write_dword(addr + 0x14, st.gid);
+    emu.maps.write_dword(addr + 0x18, st.rdev);
+    emu.maps.write_qword(addr + 0x20, st.atime); // st_atimespec.tv_sec
+    emu.maps.write_qword(addr + 0x30, st.mtime); // st_mtimespec.tv_sec
+    emu.maps.write_qword(addr + 0x40, st.ctime); // st_ctimespec.tv_sec
+    emu.maps.write_qword(addr + 0x60, st.size);
+    emu.maps.write_qword(addr + 0x68, st.blocks);
+    emu.maps.write_dword(addr + 0x70, st.blksize);
 }
 
 /// Convert POSIX PROT_* flags to emulator Permission

@@ -53,6 +53,7 @@ pub mod cbz;
 pub mod ret;
 pub mod tbz;
 
+pub mod ccmp;
 pub mod csel;
 pub mod csinc;
 pub mod csinv;
@@ -60,4 +61,5 @@ pub mod csneg;
 
 pub mod mrs;
 pub mod msr;
+pub mod simd;
 pub mod svc;

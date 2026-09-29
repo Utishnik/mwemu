@@ -136,6 +136,8 @@ impl Emu {
             library_loaded: false,
             section_handles: HashMap::new(),
             file_handles: HashMap::new(),
+            fts_handles: HashMap::new(),
+            emulated_stdout: Vec::new(),
             syscall_number_map: HashMap::new(),
             syscall_name_by_real: HashMap::new(),
             known_dll_dir_handles: HashSet::new(),
@@ -620,6 +622,60 @@ impl Emu {
             self.maps.write_qword(off, aval);
             off += 8;
         }
+    }
+
+    /// Set up macOS AArch64 calling convention for _main(argc, argv, envp, apple).
+    /// dyld calls _main with arguments in registers, not on the stack.
+    pub fn write_macos_stack_layout(&mut self) {
+        let sp = self.regs_aarch64().sp;
+
+        // Build the argument list: argv[0] = filename, rest from cfg.arguments
+        let mut args: Vec<String> = vec![self.cfg.filename.clone()];
+        if !self.cfg.arguments.is_empty() {
+            for a in self.cfg.arguments.split_whitespace() {
+                args.push(a.to_string());
+            }
+        }
+        let argc = args.len() as u64;
+
+        // Write argument strings into the stack area
+        let strings_base = sp + 0x200;
+        let mut string_addrs: Vec<u64> = Vec::new();
+        let mut string_off: u64 = 0;
+        for arg in &args {
+            let addr = strings_base + string_off;
+            let bytes = arg.as_bytes();
+            for (i, &b) in bytes.iter().enumerate() {
+                self.maps.write_byte(addr + i as u64, b);
+            }
+            self.maps.write_byte(addr + bytes.len() as u64, 0);
+            string_addrs.push(addr);
+            string_off += (bytes.len() as u64) + 1;
+        }
+
+        // Write argv pointer array on the stack
+        let argv_base = sp + 0x100;
+        for (i, &addr) in string_addrs.iter().enumerate() {
+            self.maps.write_qword(argv_base + (i as u64) * 8, addr);
+        }
+        // argv terminator
+        self.maps
+            .write_qword(argv_base + (string_addrs.len() as u64) * 8, 0);
+
+        // envp = empty array (just NULL terminator)
+        let envp_base = argv_base + ((string_addrs.len() as u64) + 1) * 8;
+        self.maps.write_qword(envp_base, 0);
+
+        // apple[] = empty array (just NULL terminator)
+        let apple_base = envp_base + 8;
+        self.maps.write_qword(apple_base, 0);
+
+        // Set registers: _main(argc, argv, envp, apple)
+        let regs = self.regs_aarch64_mut();
+        regs.x[0] = argc;
+        regs.x[1] = argv_base;
+        regs.x[2] = envp_base;
+        regs.x[3] = apple_base;
     }
 
     /// Initialize macOS aarch64 simulation for Mach-O loading.

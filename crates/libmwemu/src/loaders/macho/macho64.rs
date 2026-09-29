@@ -305,15 +305,54 @@ impl Macho64 {
     }
 
     /// Get exported symbols with their offsets (relative to binary load address).
+    ///
+    /// Tries the LC_DYLD_INFO export trie first, then falls back to (or
+    /// supplements with) the LC_SYMTAB nlist entries.  arm64e dylibs extracted
+    /// from the dyld shared cache often have an empty or missing export trie
+    /// while their nlist symbol table is intact.
     pub fn get_exports(&self) -> Vec<(String, u64)> {
         let macho = self.reparse().expect("re-parse for exports");
-        match macho.exports() {
-            Ok(exports) => exports.iter().map(|e| (e.name.clone(), e.offset)).collect(),
-            Err(e) => {
-                log::warn!("macho64: cannot read exports: {}", e);
-                Vec::new()
+        let mut result: Vec<(String, u64)> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // 1. Export trie (preferred — contains only public exports).
+        if let Ok(exports) = macho.exports() {
+            for e in &exports {
+                if e.offset != 0 && seen.insert(e.name.clone()) {
+                    result.push((e.name.clone(), e.offset));
+                }
             }
         }
+
+        // 2. Symbol table (nlist) — pick globally-visible defined symbols.
+        //    nlist n_value is an absolute virtual address in the dylib's own
+        //    address space.  Convert to a 0-based offset by subtracting the
+        //    base vmaddr of the __TEXT segment (the lowest mapped segment).
+        if let Some(ref symbols) = macho.symbols {
+            let text_base: u64 = macho
+                .segments
+                .iter()
+                .filter_map(|seg| {
+                    let vmaddr = seg.vmaddr;
+                    if seg.vmsize > 0 { Some(vmaddr) } else { None }
+                })
+                .min()
+                .unwrap_or(0);
+
+            for (name, nlist) in symbols.iter().flatten() {
+                let is_external = nlist.n_type & 0x01 != 0;
+                let is_defined = (nlist.n_type & 0x0e) == 0x0e;
+                if is_external && is_defined && nlist.n_value != 0 {
+                    let offset = nlist.n_value.wrapping_sub(text_base);
+                    let name = name.to_string();
+                    if seen.insert(name.clone()) {
+                        result.push((name, offset));
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     /// Parse chained fixups to extract imports and their GOT bind locations.
