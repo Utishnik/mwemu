@@ -755,25 +755,25 @@ impl Emu {
                 let Some(q) = self.maps.read_qword(struct_ptr + off) else {
                     break;
                 };
-                if q != 0 {
-                    if let Some(kernel) = self.kernel.as_ref() {
-                        let m = &kernel.module;
-                        if probe == 0 && m.is_module_text(q) {
-                            probe = q;
-                            probe_name = m.func_name_at(q).unwrap_or("").to_string();
-                        } else if id_table == 0 && m.is_module_data(q) {
-                            // A data pointer into the module: candidate id_table.
-                            // Skip if it is the driver's own name string (best
-                            // effort — the name reads as printable ASCII).
-                            let s = self.maps.read_string(q);
-                            let looks_stringy = !s.is_empty()
-                                && s.len() <= 40
-                                && s.chars().all(|c| c.is_ascii_graphic() || c == ' ');
-                            if looks_stringy && name.is_empty() {
-                                name = s;
-                            } else {
-                                id_table = q;
-                            }
+                if q != 0
+                    && let Some(kernel) = self.kernel.as_ref()
+                {
+                    let m = &kernel.module;
+                    if probe == 0 && m.is_module_text(q) {
+                        probe = q;
+                        probe_name = m.func_name_at(q).unwrap_or("").to_string();
+                    } else if id_table == 0 && m.is_module_data(q) {
+                        // A data pointer into the module: candidate id_table.
+                        // Skip if it is the driver's own name string (best
+                        // effort — the name reads as printable ASCII).
+                        let s = self.maps.read_string(q);
+                        let looks_stringy = !s.is_empty()
+                            && s.len() <= 40
+                            && s.chars().all(|c| c.is_ascii_graphic() || c == ' ');
+                        if looks_stringy && name.is_empty() {
+                            name = s;
+                        } else {
+                            id_table = q;
                         }
                     }
                 }

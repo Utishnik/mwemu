@@ -10,6 +10,15 @@ Reference sample: `exe64win_enigma.bin`
 ntdll version: Windows 11 26100.7920 (x64)
 Heap base in mwemu: `0x520000` (hardcoded in PEB64)
 
+> **Status (2026-09-28):** the heap-based anti-emulation described here is
+> effectively bypassed. `exe64win_enigma.bin` now emulates to
+> **~231,068,733 instructions** (well past all the heap checks below) and
+> stops later on an unrelated fault (`set_rip` to non-mapped `0x0`, an
+> unresolved API/OEP jump), not on any `_HEAP` check. `LSL` (Blocker 1) is
+> implemented; the `BlocksIndex` CFG path (Blocker 2) is no longer on this
+> sample's hit path thanks to `VirtualMemoryThreshold = 0xFE00`. See issue
+> #196.
+
 ---
 
 ## 1. Handle value itself
@@ -210,7 +219,7 @@ as PEB64, TEB64 etc — every field is read/written individually through
 
 ## Next steps to go further with Enigma
 
-### Blocker 1: `LSL` instruction (current crash)
+### Blocker 1: `LSL` instruction — RESOLVED
 
 With `VirtualMemoryThreshold = 0xFE00`, ntdll takes the segment allocator
 path which uses the `LSL` (Load Segment Limit, opcode `0F 03`) instruction
@@ -218,10 +227,11 @@ at `0x18016609c`. This is an x86 system instruction that queries the GDT
 segment limit for a selector. ntdll uses it to check if the current thread
 is running inside a fiber (`IsThreadAFiber` equivalent).
 
-**Fix:** Implement `LSL` in the x86 engine — it can return a canned segment
-limit (e.g. `0xFFFFFFFF` for a flat 64-bit segment, setting ZF=1).
+**Status:** Fixed — `LSL` is implemented in the x86 engine
+(`engine/instructions/lsl.rs`, dispatched at `engine/mod.rs`). The Enigma
+sample no longer crashes here.
 
-### Blocker 2: BlocksIndex at `+0x2C0` (large-alloc path)
+### Blocker 2: BlocksIndex at `+0x2C0` (large-alloc path) — not on the current hit path
 
 If `VirtualMemoryThreshold` is 0 (or the allocation exceeds it), ntdll
 takes the large-block path which uses CFG-validated indirect calls through

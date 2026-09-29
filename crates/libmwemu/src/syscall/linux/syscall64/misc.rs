@@ -689,12 +689,13 @@ fn dispatch_legacy_syscall64(emu: &mut emu::Emu) {
             // zero-filled. When it lands inside a previous reservation (e.g. the
             // .bss tail over libc's whole-image reservation) the existing map
             // still holds file bytes, so explicitly zero it.
-            if !helper::handler_exist(fd) && already_mapped {
-                if let Some(map) = emu.maps.get_mem_by_addr_mut(addr) {
-                    let room = (map.get_base() + map.size() as u64).saturating_sub(addr);
-                    let zeros = vec![0u8; sz.min(room) as usize];
-                    map.force_write_bytes(addr, &zeros);
-                }
+            if !helper::handler_exist(fd)
+                && already_mapped
+                && let Some(map) = emu.maps.get_mem_by_addr_mut(addr)
+            {
+                let room = (map.get_base() + map.size() as u64).saturating_sub(addr);
+                let zeros = vec![0u8; sz.min(room) as usize];
+                map.force_write_bytes(addr, &zeros);
             }
 
             if helper::handler_exist(fd) {

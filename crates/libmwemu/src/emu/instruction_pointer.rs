@@ -119,7 +119,7 @@ impl Emu {
                         let native_target = if resolved != 0 {
                             self.maps
                                 .get_addr_name(resolved)
-                                .map(|s| winapi64::msvcrt::is_native_section(s))
+                                .map(winapi64::msvcrt::is_native_section)
                                 .unwrap_or(false)
                         } else {
                             false

@@ -431,6 +431,8 @@ pub mod rcpps;
 pub mod rcpss;
 pub mod rcr;
 pub mod rdmsr;
+pub mod rdrand;
+pub mod rdseed;
 pub mod rdtsc;
 pub mod rdtscp;
 pub mod ret;

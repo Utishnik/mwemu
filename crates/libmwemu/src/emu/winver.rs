@@ -196,10 +196,10 @@ fn winbindex_key(basename: &str, build: &str, machine_type: u64) -> Result<Strin
 fn load_winbindex_index(basename: &str) -> Result<serde_json::Value, Box<dyn Error>> {
     let idx_dir = PathBuf::from("maps/winver/.index");
     let idx_path = idx_dir.join(format!("{}.json", basename));
-    if let Ok(text) = fs::read(&idx_path) {
-        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&text) {
-            return Ok(v);
-        }
+    if let Ok(text) = fs::read(&idx_path)
+        && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&text)
+    {
+        return Ok(v);
     }
     let url = format!(
         "https://winbindex.m417z.com/data/by_filename_compressed/{}.json.gz",

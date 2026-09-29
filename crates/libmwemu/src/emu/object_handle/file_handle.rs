@@ -318,11 +318,11 @@ impl FileHandle {
 
     // Setter for file_position (e.g., from SetFilePointer)
     pub fn set_position(&mut self, pos: u64) {
-        if let Some(ref mut f) = self.file {
-            if f.seek(SeekFrom::Start(pos)).is_ok() {
-                self.file_position = pos;
-                self.is_eof = false; // Seeking usually means not at EOF
-            }
+        if let Some(ref mut f) = self.file
+            && f.seek(SeekFrom::Start(pos)).is_ok()
+        {
+            self.file_position = pos;
+            self.is_eof = false; // Seeking usually means not at EOF
         }
     }
 }
@@ -395,12 +395,11 @@ impl FileSystem {
             let entry = entry?;
             let filename = entry.file_name();
 
-            if let Some(filename_str) = filename.to_str() {
-                if filename_str.len() == 1 {
-                    if let Some(ch) = filename_str.chars().next() {
-                        drives.insert(ch.to_ascii_lowercase());
-                    }
-                }
+            if let Some(filename_str) = filename.to_str()
+                && filename_str.len() == 1
+                && let Some(ch) = filename_str.chars().next()
+            {
+                drives.insert(ch.to_ascii_lowercase());
             }
         }
 

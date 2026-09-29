@@ -15,6 +15,12 @@ pub struct X86TraceSnapshot {
     pub post_flags: Flags,
 }
 
+impl Default for X86TraceSnapshot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl X86TraceSnapshot {
     pub fn new() -> Self {
         Self {
@@ -31,6 +37,12 @@ impl X86TraceSnapshot {
 pub struct AArch64TraceSnapshot {
     pub pre_regs: RegsAarch64,
     pub post_regs: RegsAarch64,
+}
+
+impl Default for AArch64TraceSnapshot {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AArch64TraceSnapshot {

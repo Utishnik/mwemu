@@ -460,10 +460,7 @@ impl O1Heap {
             Some(o) if o <= u32::MAX as u64 => o as u32,
             _ => return None,
         };
-        let frag = match self.find_fragment_by_offset(offset) {
-            Some(f) => f,
-            None => return None,
-        };
+        let frag = self.find_fragment_by_offset(offset)?;
         if !frag.borrow().used {
             return None;
         }
@@ -473,7 +470,7 @@ impl O1Heap {
         let frag_size = frag.borrow().size as usize;
         if frag_size < FRAGMENT_SIZE_MIN
             || frag_size > self.diagnostics.capacity
-            || frag_size % FRAGMENT_SIZE_MIN != 0
+            || !frag_size.is_multiple_of(FRAGMENT_SIZE_MIN)
         {
             return None;
         }
@@ -625,7 +622,7 @@ impl O1Heap {
                     leftover as u32,
                 )));
                 new_frag.borrow_mut().next = after.clone();
-                new_frag.borrow_mut().prev = Some(Rc::downgrade(&prev));
+                new_frag.borrow_mut().prev = Some(Rc::downgrade(prev));
                 if let Some(ref nn) = after {
                     nn.borrow_mut().prev = Some(Rc::downgrade(&new_frag));
                 }
@@ -638,7 +635,7 @@ impl O1Heap {
             } else {
                 prev.borrow_mut().next = after.clone();
                 if let Some(ref nn) = after {
-                    nn.borrow_mut().prev = Some(Rc::downgrade(&prev));
+                    nn.borrow_mut().prev = Some(Rc::downgrade(prev));
                 }
                 prev.borrow_mut().size = (prev_size + frag_size + next_size) as u32;
                 self.diagnostics.allocated += prev_size + next_size;

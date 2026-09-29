@@ -122,10 +122,8 @@ impl Emu {
                     self.instruction_count += 1;
 
                     // --- Limits ---
-                    if has_runtime_limits {
-                        if let Some(limit_pc) = self.check_runtime_limits(addr) {
-                            return Ok(limit_pc);
-                        }
+                    if has_runtime_limits && let Some(limit_pc) = self.check_runtime_limits(addr) {
+                        return Ok(limit_pc);
                     }
 
                     // --- Verbose-at / verbose-range activation ---
@@ -208,8 +206,7 @@ impl Emu {
 
                     // --- Pre-instruction hook ---
                     if let Some(mut hook_fn) = self.hooks.hook_on_pre_instruction.take() {
-                        let decoded =
-                            decoded.unwrap_or_else(|| DecodedInstruction::AArch64(aarch64_ins));
+                        let decoded = decoded.unwrap_or(DecodedInstruction::AArch64(aarch64_ins));
                         let hook_pc = self.pc();
                         let skip = !hook_fn(self, hook_pc, &decoded, sz);
                         self.hooks.hook_on_pre_instruction = Some(hook_fn);
@@ -220,7 +217,7 @@ impl Emu {
                     }
 
                     // --- Entropy ---
-                    if self.cfg.entropy && self.pos % 10000 == 0 {
+                    if self.cfg.entropy && self.pos.is_multiple_of(10000) {
                         self.update_entropy();
                     }
 
@@ -228,8 +225,7 @@ impl Emu {
                     // Use `show_instruction` so the line gets the same color
                     // as the post-mortem dump and the x86 path.
                     if self.cfg.verbose >= 2 {
-                        let decoded =
-                            decoded.unwrap_or_else(|| DecodedInstruction::AArch64(aarch64_ins));
+                        let decoded = decoded.unwrap_or(DecodedInstruction::AArch64(aarch64_ins));
                         self.show_instruction(color!("Cyan"), &decoded);
                     }
 
@@ -246,8 +242,7 @@ impl Emu {
 
                     // --- Post-instruction hook ---
                     if let Some(mut hook_fn) = self.hooks.hook_on_post_instruction.take() {
-                        let decoded =
-                            decoded.unwrap_or_else(|| DecodedInstruction::AArch64(aarch64_ins));
+                        let decoded = decoded.unwrap_or(DecodedInstruction::AArch64(aarch64_ins));
                         let hook_pc = self.pc();
                         hook_fn(self, hook_pc, &decoded, sz, emulation_ok);
                         self.hooks.hook_on_post_instruction = Some(hook_fn);

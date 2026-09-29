@@ -35,10 +35,10 @@ enum AllocKind {
 }
 
 fn classify(emu: &emu::Emu, addr: u64) -> AllocKind {
-    if let Some(heap) = emu.heap_arenas.first() {
-        if let Some(size) = heap.allocation_size(addr) {
-            return AllocKind::Arena { size };
-        }
+    if let Some(heap) = emu.heap_arenas.first()
+        && let Some(size) = heap.allocation_size(addr)
+    {
+        return AllocKind::Arena { size };
     }
 
     match emu.maps.get_mem_by_addr(addr) {

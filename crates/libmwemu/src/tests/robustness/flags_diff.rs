@@ -233,7 +233,7 @@ diff_test!(
     u64,
     "r",
     "sub",
-    |f: &mut Flags, a, b| f.sub64(a as u64, b as u64)
+    |f: &mut Flags, a, b| f.sub64(a, b)
 );
 
 // ---- adc / sbb (carry-in path — a classic bug spot) ----

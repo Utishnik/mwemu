@@ -1,4 +1,6 @@
 #![allow(unexpected_cfgs)]
+// clippy v1 burn-down backlog (see V1-ROADMAP.md P2 #9)
+#![allow(clippy::unnecessary_unwrap)]
 
 extern crate clap;
 
@@ -107,6 +109,12 @@ impl RecordFormat for CustomLogFormat {
             Command::CommandExit => {}
             Command::CommandFlush(_) => {}
         }
+    }
+}
+
+impl Default for CustomLogFormat {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -615,7 +623,6 @@ fn main() -> process::ExitCode {
             matches
                 .value_of("args")
                 .expect("specify the argument string")
-                .to_string()
         );
         emu.cfg.arguments = matches
             .value_of("args")
@@ -764,10 +771,10 @@ fn main() -> process::ExitCode {
         let result = emu.run(None);
 
         // Dump registers/stack like the panic hook — run() returns Err without panicking.
-        if let Err(ref e) = result {
-            if e.message != "empty code block" {
-                libmwemu::emu_context::log_emu_state(&mut emu);
-            }
+        if let Err(ref e) = result
+            && e.message != "empty code block"
+        {
+            libmwemu::emu_context::log_emu_state(&emu);
         }
 
         // Clear the current emu

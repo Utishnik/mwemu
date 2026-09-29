@@ -153,21 +153,21 @@ impl HandleManagement {
     /// creating one (bound to arena 0) on first call. Slot 0 is reserved,
     /// so the first real handle (and thus this key) is always non-zero.
     pub fn get_or_insert_process_heap(&mut self) -> u32 {
-        if let Some(k) = self.process_heap_key {
-            if matches!(
+        if let Some(k) = self.process_heap_key
+            && matches!(
                 self.handle_types.get(k as usize),
                 Some(HandleType::HeapHandle(_))
-            ) {
-                return k;
-            }
+            )
+        {
+            return k;
         }
         for (k, entry) in self.handle_types.iter() {
-            if let HandleType::HeapHandle(hh) = entry {
-                if hh.arena == 0 {
-                    let key = k as u32;
-                    self.process_heap_key = Some(key);
-                    return key;
-                }
+            if let HandleType::HeapHandle(hh) = entry
+                && hh.arena == 0
+            {
+                let key = k as u32;
+                self.process_heap_key = Some(key);
+                return key;
             }
         }
         let key = self.insert_heap_handle(HeapHandle::new(0, 0, 0, 0));
@@ -225,10 +225,10 @@ impl HandleManagement {
             return None;
         }
         for (k, entry) in self.handle_types.iter() {
-            if let HandleType::HeapHandle(hh) = entry {
-                if hh.base_addr == addr {
-                    return Some(k as u32);
-                }
+            if let HandleType::HeapHandle(hh) = entry
+                && hh.base_addr == addr
+            {
+                return Some(k as u32);
             }
         }
         None

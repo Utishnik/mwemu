@@ -376,7 +376,7 @@ impl Emu {
                         } else {
                             log::trace!("/!\\ error dereferencing qword on 0x{:x}", mem_addr);
                             self.exception(ExceptionType::QWordDereferencing);
-                            return None;
+                            None
                         }
                     }
                 }),
@@ -384,7 +384,7 @@ impl Emu {
                 32 => self
                     .maps
                     .read_dword(mem_addr)
-                    .and_then(|v| Some(v as u64))
+                    .map(|v| v as u64)
                     .or_else(|| {
                         std::hint::cold_path();
                         if self.try_grow_stack(mem_addr) {
@@ -395,74 +395,66 @@ impl Emu {
                             } else {
                                 log::trace!("/!\\ error dereferencing dword on 0x{:x}", mem_addr);
                                 self.exception(ExceptionType::DWordDereferencing);
-                                return None;
-                            }
-                        }
-                    }),
-
-                16 => self
-                    .maps
-                    .read_word(mem_addr)
-                    .and_then(|v| Some(v as u64))
-                    .or_else(|| {
-                        std::hint::cold_path();
-                        if self.try_grow_stack(mem_addr) {
-                            Some(self.maps.read_word(mem_addr).unwrap_or(0) as u64)
-                        } else {
-                            if self.kernel.is_some() {
-                                Some(0)
-                            } else {
-                                log::trace!("/!\\ error dereferencing word on 0x{:x}", mem_addr);
-                                self.exception(ExceptionType::WordDereferencing);
-                                return None;
-                            }
-                        }
-                    }),
-
-                _ => self
-                    .maps
-                    .read_byte(mem_addr)
-                    .and_then(|v| Some(v as u64))
-                    .or_else(|| {
-                        std::hint::cold_path();
-                        if self.try_grow_stack(mem_addr) {
-                            Some(self.maps.read_byte(mem_addr).unwrap_or(0) as u64)
-                        } else {
-                            if self.kernel.is_some() {
-                                Some(0)
-                            } else {
-                                log::trace!("/!\\ error dereferencing byte on 0x{:x}", mem_addr);
-                                self.exception(ExceptionType::ByteDereferencing);
                                 None
                             }
                         }
                     }),
+
+                16 => self.maps.read_word(mem_addr).map(|v| v as u64).or_else(|| {
+                    std::hint::cold_path();
+                    if self.try_grow_stack(mem_addr) {
+                        Some(self.maps.read_word(mem_addr).unwrap_or(0) as u64)
+                    } else {
+                        if self.kernel.is_some() {
+                            Some(0)
+                        } else {
+                            log::trace!("/!\\ error dereferencing word on 0x{:x}", mem_addr);
+                            self.exception(ExceptionType::WordDereferencing);
+                            None
+                        }
+                    }
+                }),
+
+                _ => self.maps.read_byte(mem_addr).map(|v| v as u64).or_else(|| {
+                    std::hint::cold_path();
+                    if self.try_grow_stack(mem_addr) {
+                        Some(self.maps.read_byte(mem_addr).unwrap_or(0) as u64)
+                    } else {
+                        if self.kernel.is_some() {
+                            Some(0)
+                        } else {
+                            log::trace!("/!\\ error dereferencing byte on 0x{:x}", mem_addr);
+                            self.exception(ExceptionType::ByteDereferencing);
+                            None
+                        }
+                    }
+                }),
             };
 
-            if self.cfg.trace_mem {
-                if let Some(val) = value {
-                    let name = self.maps.get_addr_name(mem_addr).unwrap_or("not mapped");
-                    let memory_operation = MemoryOperation {
-                        pos: self.pos,
-                        rip: self.regs().rip,
-                        op: "read".to_string(),
-                        bits: sz,
-                        address: mem_addr,
-                        old_value: 0,
-                        new_value: val,
-                        name: name.to_string(),
-                    };
-                    self.memory_operations.push(memory_operation);
-                    log::trace!(
-                        "\tmem_trace: pos = {} rip = {:x} op = read bits = {} address = 0x{:x} value = 0x{:x} name = '{}'",
-                        self.pos,
-                        self.regs().rip,
-                        sz,
-                        mem_addr,
-                        val,
-                        name
-                    );
-                }
+            if self.cfg.trace_mem
+                && let Some(val) = value
+            {
+                let name = self.maps.get_addr_name(mem_addr).unwrap_or("not mapped");
+                let memory_operation = MemoryOperation {
+                    pos: self.pos,
+                    rip: self.regs().rip,
+                    op: "read".to_string(),
+                    bits: sz,
+                    address: mem_addr,
+                    old_value: 0,
+                    new_value: val,
+                    name: name.to_string(),
+                };
+                self.memory_operations.push(memory_operation);
+                log::trace!(
+                    "\tmem_trace: pos = {} rip = {:x} op = read bits = {} address = 0x{:x} value = 0x{:x} name = '{}'",
+                    self.pos,
+                    self.regs().rip,
+                    sz,
+                    mem_addr,
+                    val,
+                    name
+                );
             }
 
             if unlikely(self.bp.is_bp_mem_read(mem_addr)) {
@@ -495,7 +487,8 @@ impl Emu {
         debug_assert!(ins.op_count() > noperand);
 
         let op_kind = ins.op_kind(noperand);
-        let value = if op_kind == OpKind::Register {
+
+        if op_kind == OpKind::Register {
             Some(self.regs().get_reg(ins.op_register(noperand)))
         } else if op_kind == OpKind::Memory {
             self.handle_memory_get_operand(ins, noperand, do_derref)
@@ -534,8 +527,7 @@ impl Emu {
                     unreachable!("Error something is wrong")
                 }
             }
-        };
-        value
+        }
     }
 
     /// Set a value to an operand, normally noperand=0

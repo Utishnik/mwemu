@@ -842,6 +842,8 @@ pub fn emulate_instruction(
         Mnemonic::Clc => instructions::clc::execute(emu, ins, instruction_sz, rep_step),
         Mnemonic::Rdtsc => instructions::rdtsc::execute(emu, ins, instruction_sz, rep_step),
         Mnemonic::Rdtscp => instructions::rdtscp::execute(emu, ins, instruction_sz, rep_step),
+        Mnemonic::Rdrand => instructions::rdrand::execute(emu, ins, instruction_sz, rep_step),
+        Mnemonic::Rdseed => instructions::rdseed::execute(emu, ins, instruction_sz, rep_step),
         Mnemonic::Loop => instructions::r#loop::execute(emu, ins, instruction_sz, rep_step),
         Mnemonic::Loope => instructions::loope::execute(emu, ins, instruction_sz, rep_step),
         Mnemonic::Loopne => instructions::loopne::execute(emu, ins, instruction_sz, rep_step),

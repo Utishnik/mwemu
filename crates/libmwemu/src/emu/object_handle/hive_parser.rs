@@ -566,10 +566,10 @@ impl<R: Read + Seek> HiveParser<R> {
         }
 
         // Add subpaths to parent cache if this is not the root
-        if !current_path.is_empty() {
-            if let Some(cache) = self.subkey_cache.get_mut(current_path) {
-                cache.subpaths.extend(subpaths);
-            }
+        if !current_path.is_empty()
+            && let Some(cache) = self.subkey_cache.get_mut(current_path)
+        {
+            cache.subpaths.extend(subpaths);
         }
 
         Ok(())
@@ -849,7 +849,7 @@ mod tests {
     fn test_offsets_read() {
         let mut data = Vec::new();
         data.extend_from_slice(&4096i32.to_le_bytes()); // block_size
-        data.extend_from_slice(&[b'l', b'f']); // block_type
+        data.extend_from_slice(b"lf"); // block_type
         data.extend_from_slice(&10i16.to_le_bytes()); // count
         data.extend_from_slice(&100i32.to_le_bytes()); // first
         data.extend_from_slice(&200i32.to_le_bytes()); // hash
@@ -870,7 +870,7 @@ mod tests {
     fn test_key_block_read() {
         let mut data = Vec::new();
         data.extend_from_slice(&4096i32.to_le_bytes()); // block_size
-        data.extend_from_slice(&[b'n', b'k']); // block_type
+        data.extend_from_slice(b"nk"); // block_type
         data.extend_from_slice(&[0u8; 18]); // dummy
         data.extend_from_slice(&5i32.to_le_bytes()); // subkey_count
         data.extend_from_slice(&[0u8; 4]); // dummy
@@ -903,7 +903,7 @@ mod tests {
     fn test_value_block_read() {
         let mut data = Vec::new();
         data.extend_from_slice(&512i32.to_le_bytes()); // block_size
-        data.extend_from_slice(&[b'v', b'k']); // block_type
+        data.extend_from_slice(b"vk"); // block_type
         data.extend_from_slice(&9i16.to_le_bytes()); // name_len
         data.extend_from_slice(&4i32.to_le_bytes()); // size
         data.extend_from_slice(&1024i32.to_le_bytes()); // data_offset

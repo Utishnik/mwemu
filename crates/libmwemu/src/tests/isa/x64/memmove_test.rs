@@ -734,7 +734,7 @@ fn memmove_performance_threshold_boundary() {
     let (mut emu, code_addr, memmove_code_len) = setup_memmove_emulator();
 
     // Test the boundary where MOVNTI instructions kick in (around 0x2000 * 32 = 0x40000)
-    let threshold_sizes = vec![0x3F00, 0x4000, 0x4100]; // Just below, at, and above threshold
+    let threshold_sizes = [0x3F00, 0x4000, 0x4100]; // Just below, at, and above threshold
 
     for (i, &size) in threshold_sizes.iter().enumerate() {
         let src_addr = 0x3000000 + (i * 0x100000) as u64;
@@ -762,7 +762,7 @@ fn memmove_performance_threshold_boundary() {
 
         emu.regs_mut().rdx = dest_addr;
         emu.regs_mut().rcx = src_addr;
-        emu.regs_mut().r8 = size as u64;
+        emu.regs_mut().r8 = size;
         emu.regs_mut().rip = code_addr;
 
         let return_addr = code_addr + memmove_code_len as u64;

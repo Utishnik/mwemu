@@ -502,10 +502,10 @@ impl Maps {
         if let Some(b) = self.get_addr_base(addr) {
             return Some(b);
         }
-        if addr > 0 {
-            if let Some(b) = self.get_addr_base(addr - 1) {
-                return Some(b);
-            }
+        if addr > 0
+            && let Some(b) = self.get_addr_base(addr - 1)
+        {
+            return Some(b);
         }
         for (_, mem) in self.mem_slab.iter() {
             let name = mem.get_name();
@@ -781,7 +781,7 @@ impl Maps {
             .map(|(addr, mem)| {
                 let mem = self.mem_slab.get(*mem).unwrap();
                 let sz = mem.size() as u64;
-                let base = addr.clone();
+                let base = *addr;
                 self.align_up(base + sz, Self::DEFAULT_ALIGNMENT)
             })
             .unwrap_or(bottom_aligned)

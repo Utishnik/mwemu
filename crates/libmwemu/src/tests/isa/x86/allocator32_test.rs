@@ -13,17 +13,17 @@ pub fn allocator32_test() {
     emu.maps.clear();
     emu.init_win32(false, false);
 
-    assert_eq!(emu.maps.exists_mapname("shell32.rsrc"), true);
-    assert_eq!(emu.maps.get_map_by_name("shell32.rsrc").is_some(), true);
-    assert_eq!(emu.maps.exists_mapname("notexist"), false);
-    assert_eq!(emu.maps.get_map_by_name("notexist").is_some(), false);
+    assert!(emu.maps.exists_mapname("shell32.rsrc"));
+    assert!(emu.maps.get_map_by_name("shell32.rsrc").is_some());
+    assert!(!emu.maps.exists_mapname("notexist"));
+    assert!(emu.maps.get_map_by_name("notexist").is_none());
 
     for _ in 0..700 {
-        assert_eq!(emu.maps.alloc(1024).is_some(), true);
-        assert_eq!(emu.maps.lib32_alloc(1024).is_some(), true);
+        assert!(emu.maps.alloc(1024).is_some());
+        assert!(emu.maps.lib32_alloc(1024).is_some());
     }
 
-    assert_eq!(emu.maps.mem_test(), true);
+    assert!(emu.maps.mem_test());
 
     // VirtualAlloc(addr, sz, flAllocationType, flProtect)
     let p = helpers::call_winapi32(
@@ -31,7 +31,7 @@ pub fn allocator32_test() {
         winapi32::kernel32::VirtualAlloc,
         &[0, 1024, constants::MEM_RESERVE, 0x40],
     );
-    assert_eq!(emu.maps.is_allocated(p as u64), true);
+    assert!(emu.maps.is_allocated(p as u64));
 
     helpers::call_winapi32(
         &mut emu,

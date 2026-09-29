@@ -20,6 +20,11 @@
 //! * 128-bit (XMM / 128-bit memory) values are passed as a `lo`/`hi` pair of
 //!   `uint64_t` to stay portable across C compilers.
 
+// The `emu!`/`cstr!` FFI macros pass `()` as the null-return value for
+// void functions; clippy's unused_unit is a false positive for that pattern.
+#![allow(clippy::unused_unit)]
+// clippy v1 burn-down backlog (see V1-ROADMAP.md P2 #9)
+#![allow(clippy::cast_slice_from_raw_parts)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 

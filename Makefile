@@ -29,13 +29,14 @@ test-ci:
 	cargo build --locked $(CI_PACKAGES) $(CARGO_TARGET)
 	cargo test --locked --verbose $(CI_PACKAGES) $(CARGO_TARGET)
 
-# Lint the same packages and targets as hosted CI. Existing warnings are reported
-# but are not denied until the current warning backlog is addressed separately.
+# Lint the same packages and targets as hosted CI. Warnings are denied
+# (-D warnings); the remaining backlog is grandfathered via crate-level
+# #![allow(...)] blocks marked "clippy v1 burn-down backlog" (see V1-ROADMAP.md).
 clippy:
-	cargo clippy --locked $(CI_PACKAGES) --all-targets $(CARGO_TARGET)
+	cargo clippy --locked $(CI_PACKAGES) --all-targets $(CARGO_TARGET) -- -D warnings
 
 clippy-release:
-	cargo clippy --locked --release $(CI_PACKAGES) --all-targets $(CARGO_TARGET)
+	cargo clippy --locked --release $(CI_PACKAGES) --all-targets $(CARGO_TARGET) -- -D warnings
 
 # Kernel-mode test target: builds drivers/linux/tlm into test/linux_uaf_driver.ko,
 # the deliberately vulnerable .ko the kernel emulation tests load. Needs the

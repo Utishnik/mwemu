@@ -93,7 +93,7 @@ impl Emu {
                     return Ok(self.regs().rip);
                 }
 
-                if self.cfg.entropy && self.instruction_count % 10000 == 0 {
+                if self.cfg.entropy && self.instruction_count.is_multiple_of(10000) {
                     self.update_entropy();
                 }
 
