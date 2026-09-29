@@ -82,6 +82,32 @@ maps: all samples
 sloppy:
 	-python3 scripts/sloppy.py
 
+# Extract macOS dylibs from the local dyld shared cache into maps/macos/aarch64/.
+# Requires macOS with dsc_extractor.bundle (ships with the OS).  The loader
+# strips directory prefixes, so every dylib lands flat in the target folder.
+DYLD_MAPS := maps/macos/aarch64
+DYLD_EXTRACTOR := scripts/extract_dyld_cache
+
+$(DYLD_EXTRACTOR): scripts/extract_dyld_cache.c
+	cc -o $@ $<
+
+dyld: $(DYLD_EXTRACTOR)
+	@echo "[dyld] extracting dyld shared cache (this takes a minute)..."
+	@TMPDIR=$$(mktemp -d); \
+	./$(DYLD_EXTRACTOR) "$$TMPDIR" && \
+	mkdir -p $(DYLD_MAPS) && \
+	for f in "$$TMPDIR"/usr/lib/*.dylib "$$TMPDIR"/usr/lib/system/*.dylib; do \
+		[ -f "$$f" ] || continue; \
+		NAME=$$(basename "$$f"); \
+		if git ls-files --error-unmatch $(DYLD_MAPS)/$$NAME >/dev/null 2>&1; then \
+			echo "  skip $$NAME (tracked stub)"; \
+		else \
+			cp "$$f" $(DYLD_MAPS)/$$NAME; \
+		fi; \
+	done; \
+	rm -rf "$$TMPDIR"; \
+	echo "[dyld] $$(ls $(DYLD_MAPS)/*.dylib 2>/dev/null | wc -l | tr -d ' ') dylibs in $(DYLD_MAPS)/"
+
 # Handy manual runs
 test_syscall: samples
 	cargo run --release -- -f $(TEST_DIR)/exe64win_msgbox.bin -6 --syscall-mode --winver win11
