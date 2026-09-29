@@ -660,7 +660,7 @@ mod tests {
 
         let key_block = KeyBlock {
             block_size: 4096,
-            block_type: [b'n', b'k'],
+            block_type: *b"nk",
             subkey_count: 0,
             subkeys_offset: 0,
             value_count: 0,
@@ -680,7 +680,7 @@ mod tests {
 
         let key_block = KeyBlock {
             block_size: 4096,
-            block_type: [b'n', b'k'],
+            block_type: *b"nk",
             subkey_count: 0,
             subkeys_offset: 0,
             value_count: 0,
@@ -735,7 +735,7 @@ mod tests {
 
         let value_block = ValueBlock {
             block_size: 512,
-            block_type: [b'v', b'k'],
+            block_type: *b"vk",
             name_len: test_name.len() as i16,
             size: 4,
             data_offset: 1024,
@@ -860,7 +860,7 @@ mod tests {
         assert!(result.is_ok());
         let offsets = result.unwrap();
         assert_eq!(offsets.block_size, 4096);
-        assert_eq!(offsets.block_type, [b'l', b'f']);
+        assert_eq!(offsets.block_type, *b"lf");
         assert_eq!(offsets.count, 10);
         assert_eq!(offsets.first, 100);
         assert_eq!(offsets.hash, 200);
@@ -890,7 +890,7 @@ mod tests {
         assert!(result.is_ok());
         let key_block = result.unwrap();
         assert_eq!(key_block.block_size, 4096);
-        assert_eq!(key_block.block_type, [b'n', b'k']);
+        assert_eq!(key_block.block_type, *b"nk");
         assert_eq!(key_block.subkey_count, 5);
         assert_eq!(key_block.subkeys_offset, 1000);
         assert_eq!(key_block.value_count, 3);
@@ -918,7 +918,7 @@ mod tests {
         assert!(result.is_ok());
         let value_block = result.unwrap();
         assert_eq!(value_block.block_size, 512);
-        assert_eq!(value_block.block_type, [b'v', b'k']);
+        assert_eq!(value_block.block_type, *b"vk");
         assert_eq!(value_block.name_len, 9);
         assert_eq!(value_block.size, 4);
         assert_eq!(value_block.data_offset, 1024);
