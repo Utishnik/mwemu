@@ -2106,7 +2106,6 @@ struct FtsEntry {
 
 impl FtsEntry {
     fn from_metadata(path: String, meta: &std::fs::Metadata, is_root: bool) -> Self {
-        use std::os::unix::fs::MetadataExt;
         let name = std::path::Path::new(&path)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -2118,13 +2117,20 @@ impl FtsEntry {
         } else {
             FTS_F
         };
+        #[cfg(unix)]
+        let (ino, dev, nlink) = {
+            use std::os::unix::fs::MetadataExt;
+            (meta.ino(), meta.dev(), meta.nlink())
+        };
+        #[cfg(not(unix))]
+        let (ino, dev, nlink) = (0u64, 0u64, 1u64);
         FtsEntry {
             name,
             path,
             fts_info,
-            ino: meta.ino(),
-            dev: meta.dev(),
-            nlink: meta.nlink(),
+            ino,
+            dev,
+            nlink,
             is_root,
             stat: StatData::from_metadata(meta),
         }
@@ -2157,6 +2163,7 @@ struct StatData {
 }
 
 impl StatData {
+    #[cfg(unix)]
     fn from_metadata(meta: &std::fs::Metadata) -> Self {
         use std::os::unix::fs::MetadataExt;
         StatData {
@@ -2173,6 +2180,25 @@ impl StatData {
             atime: meta.atime() as u64,
             mtime: meta.mtime() as u64,
             ctime: meta.ctime() as u64,
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn from_metadata(meta: &std::fs::Metadata) -> Self {
+        StatData {
+            dev: 0,
+            mode: if meta.is_dir() { 0o40755 } else { 0o100644 },
+            nlink: 1,
+            ino: 0,
+            uid: 501,
+            gid: 20,
+            rdev: 0,
+            size: meta.len(),
+            blocks: (meta.len() + 511) / 512,
+            blksize: 4096,
+            atime: 0,
+            mtime: 0,
+            ctime: 0,
         }
     }
 }
